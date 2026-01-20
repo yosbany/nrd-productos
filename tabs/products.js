@@ -134,7 +134,7 @@ function loadProducts() {
 }
 
 // Show product form
-function showProductForm(productId = null) {
+async function showProductForm(productId = null) {
   const form = document.getElementById('product-form');
   const list = document.getElementById('products-list');
   const header = document.querySelector('#products-view .flex.flex-col');

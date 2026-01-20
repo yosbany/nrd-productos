@@ -7,7 +7,7 @@
   <title>NRD Productos</title>
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="styles.css?v=1768909496475">
+  <link rel="stylesheet" href="styles.css?v=1768909783330">
   <meta name="theme-color" content="#dc2626">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
@@ -451,18 +451,18 @@
   </script>
   
   <!-- App Scripts -->
-  <script src="logger.js?v=1768909496475"></script>
-  <script src="modal.js?v=1768909496475"></script>
-  <script src="auth.js?v=1768909496475"></script>
-  <script src="tabs/products.js?v=1768909496475"></script>
-  <script src="app.js?v=1768909496475"></script>
+  <script src="logger.js?v=1768909783330"></script>
+  <script src="modal.js?v=1768909783330"></script>
+  <script src="auth.js?v=1768909783330"></script>
+  <script src="tabs/products.js?v=1768909783330"></script>
+  <script src="app.js?v=1768909783330"></script>
 
   <script>
 
     // Register service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js?v=1768909496475')
+        navigator.serviceWorker.register('service-worker.js?v=1768909783330')
           .then(reg => {
             logger.info('Service Worker registered');
             reg.addEventListener('updatefound', () => {
