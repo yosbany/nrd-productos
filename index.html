@@ -7,7 +7,7 @@
   <title>NRD Productos</title>
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="styles.css?v=1768857683931">
+  <link rel="stylesheet" href="styles.css?v=1768905776230">
   <meta name="theme-color" content="#dc2626">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
@@ -170,6 +170,22 @@
                 <span class="text-xs uppercase tracking-wider text-gray-600">Activo</span>
               </label>
             </div>
+            
+            <!-- Variantes Section -->
+            <div class="mb-4 sm:mb-6 pt-4 sm:pt-6 border-t border-gray-200">
+              <div class="flex items-center justify-between mb-3">
+                <label class="text-xs uppercase tracking-wider text-gray-600">Variantes del Producto</label>
+                <button type="button" id="add-variant-btn" 
+                  class="px-3 py-1.5 text-xs bg-gray-200 text-gray-700 border border-gray-300 rounded hover:bg-gray-300 transition-colors uppercase tracking-wider font-light">
+                  + Agregar Variante
+                </button>
+              </div>
+              <p class="text-xs text-gray-500 mb-3">Las variantes permiten manejar diferentes tamaños, sabores, colores, etc. del mismo producto base.</p>
+              <div id="product-variants-list" class="space-y-2">
+                <!-- Las variantes se agregarán dinámicamente aquí -->
+              </div>
+            </div>
+            
             <div class="flex flex-col sm:flex-row gap-2 sm:gap-4 pt-4 sm:pt-6 border-t border-gray-200">
               <button type="submit" id="save-product-btn"
                 class="flex-1 px-4 sm:px-6 py-2 bg-green-600 text-white border border-green-600 hover:bg-green-700 transition-colors uppercase tracking-wider text-xs sm:text-sm font-light">
@@ -270,18 +286,18 @@
   </script>
   
   <!-- App Scripts -->
-  <script src="logger.js?v=1768857683931"></script>
-  <script src="modal.js?v=1768857683931"></script>
-  <script src="auth.js?v=1768857683931"></script>
-  <script src="tabs/products.js?v=1768857683931"></script>
-  <script src="app.js?v=1768857683931"></script>
+  <script src="logger.js?v=1768905776230"></script>
+  <script src="modal.js?v=1768905776230"></script>
+  <script src="auth.js?v=1768905776230"></script>
+  <script src="tabs/products.js?v=1768905776230"></script>
+  <script src="app.js?v=1768905776230"></script>
 
   <script>
 
     // Register service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js?v=1768857683931')
+        navigator.serviceWorker.register('service-worker.js?v=1768905776230')
           .then(reg => {
             logger.info('Service Worker registered');
             reg.addEventListener('updatefound', () => {
