@@ -5,38 +5,14 @@ let productsSearchTerm = ''; // Search term for products
 
 // Helper functions for product variants
 /**
- * Genera el SKU completo de una variante
- * @param {string} parentSku - SKU del producto padre
- * @param {string} variantSuffix - Sufijo de la variante
- * @returns {string} SKU completo en formato <SKU Padre>_<SKUVariante>
- */
-function getVariantSku(parentSku, variantSuffix) {
-  if (!parentSku || !variantSuffix) return '';
-  return `${parentSku}_${variantSuffix}`;
-}
-
-/**
- * Obtiene el SKU completo de una variante desde un producto
- * @param {Product} product - Producto con variantes
- * @param {string} variantId - ID de la variante
- * @returns {string} SKU completo o string vacío
- */
-function getVariantSkuFromProduct(product, variantId) {
-  if (!product || !product.variants || !variantId) return '';
-  const variant = product.variants.find(v => v.id === variantId);
-  if (!variant || !variant.skuSuffix || !product.sku) return '';
-  return getVariantSku(product.sku, variant.skuSuffix);
-}
-
-/**
- * Obtiene una variante específica de un producto
+ * Obtiene una variante específica de un producto por SKU
  * @param {Product} product - Producto
- * @param {string} variantId - ID de la variante
+ * @param {string} variantSku - SKU de la variante
  * @returns {ProductVariant|null}
  */
-function getVariantById(product, variantId) {
-  if (!product || !product.variants || !variantId) return null;
-  return product.variants.find(v => v.id === variantId) || null;
+function getVariantBySku(product, variantSku) {
+  if (!product || !product.variants || !variantSku) return null;
+  return product.variants.find(v => v.sku === variantSku) || null;
 }
 
 // Load products
@@ -176,6 +152,14 @@ function showProductForm(productId = null) {
   // Clear variants list
   const variantsList = document.getElementById('product-variants-list');
   if (variantsList) variantsList.innerHTML = '';
+  
+  // Clear purchase units list
+  const purchaseUnitsList = document.getElementById('purchase-units-list');
+  if (purchaseUnitsList) purchaseUnitsList.innerHTML = '';
+  
+  // Clear conversions list
+  const conversionsList = document.getElementById('conversions-list');
+  if (conversionsList) conversionsList.innerHTML = '';
 
   const subtitle = document.getElementById('product-form-subtitle');
   const saveBtn = document.getElementById('save-product-btn');
@@ -202,13 +186,41 @@ function showProductForm(productId = null) {
         document.getElementById('product-cost').value = product.cost || '';
         document.getElementById('product-active').checked = product.active !== false;
         
+        // Load roles
+        document.getElementById('product-es-vendible').checked = product.esVendible === true;
+        document.getElementById('product-es-comprable').checked = product.esComprable === true;
+        document.getElementById('product-es-insumo').checked = product.esInsumo === true;
+        document.getElementById('product-es-producible').checked = product.esProducible === true;
+        
+        // Load units
+        if (product.unidadVenta) {
+          document.getElementById('product-unidad-venta').value = product.unidadVenta;
+        }
+        if (product.unidadProduccion) {
+          document.getElementById('product-unidad-produccion').value = product.unidadProduccion;
+        }
+        
+        // Load purchase units
+        if (product.unidadesCompra && Array.isArray(product.unidadesCompra)) {
+          for (const purchaseUnit of product.unidadesCompra) {
+            await addPurchaseUnitRow(purchaseUnit);
+          }
+        }
+        
+        // Load conversions
+        if (product.conversiones && Array.isArray(product.conversiones)) {
+          for (const conversion of product.conversiones) {
+            addConversionRow(conversion);
+          }
+        }
+        
         // Load variants
         if (variantsList) {
           variantsList.innerHTML = '';
           if (product.variants && Array.isArray(product.variants)) {
-            product.variants.forEach(variant => {
-              addVariantRow(variant);
-            });
+            for (const variant of product.variants) {
+              await addVariantRow(variant);
+            }
           }
         }
       }
@@ -227,6 +239,15 @@ function showProductForm(productId = null) {
       saveBtn.classList.add('bg-green-600', 'border-green-600', 'hover:bg-green-700');
     }
     document.getElementById('product-active').checked = true;
+    // Initialize roles checkboxes to false for new products
+    document.getElementById('product-es-vendible').checked = false;
+    document.getElementById('product-es-comprable').checked = false;
+    document.getElementById('product-es-insumo').checked = false;
+    document.getElementById('product-es-producible').checked = false;
+    
+    // Initialize units to empty
+    document.getElementById('product-unidad-venta').value = '';
+    document.getElementById('product-unidad-produccion').value = '';
   }
 }
 
@@ -276,6 +297,19 @@ async function viewProduct(productId) {
     if (form) form.classList.add('hidden');
     if (detail) detail.classList.remove('hidden');
 
+    // Load supplier names for purchase units
+    const supplierNamesMap = {};
+    if (product.unidadesCompra && product.unidadesCompra.length > 0) {
+      try {
+        const suppliers = await loadSuppliers();
+        suppliers.forEach(supplier => {
+          supplierNamesMap[supplier.id] = supplier.name;
+        });
+      } catch (error) {
+        logger.error('Failed to load suppliers for detail view', error);
+      }
+    }
+
     document.getElementById('product-detail-content').innerHTML = `
       <div class="space-y-3 sm:space-y-4">
         <div class="flex justify-between py-2 sm:py-3 border-b border-gray-200">
@@ -298,12 +332,76 @@ async function viewProduct(productId) {
           <span class="font-light text-sm sm:text-base text-gray-700 font-medium">$${parseFloat(product.cost || 0).toFixed(2)}</span>
         </div>
         ` : ''}
+        ${(product.esVendible || product.esComprable || product.esInsumo || product.esProducible) ? `
+        <div class="py-2 sm:py-3 border-b border-gray-200">
+          <div class="text-gray-600 font-light text-sm sm:text-base mb-2">Roles:</div>
+          <div class="flex flex-wrap gap-2">
+            ${product.esVendible ? '<span class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded border border-green-300">Vendible</span>' : ''}
+            ${product.esComprable ? '<span class="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded border border-blue-300">Comprable</span>' : ''}
+            ${product.esInsumo ? '<span class="px-2 py-1 text-xs bg-orange-100 text-orange-700 rounded border border-orange-300">Insumo</span>' : ''}
+            ${product.esProducible ? '<span class="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded border border-purple-300">Producible</span>' : ''}
+          </div>
+        </div>
+        ` : ''}
+        ${(product.unidadVenta || product.unidadProduccion || (product.unidadesCompra && product.unidadesCompra.length > 0)) ? `
+        <div class="py-2 sm:py-3 border-b border-gray-200">
+          <div class="text-gray-600 font-light text-sm sm:text-base mb-2">Unidades de Medida:</div>
+          <div class="space-y-2 text-sm">
+            ${product.unidadVenta ? `
+            <div class="flex justify-between">
+              <span class="text-gray-600">Venta:</span>
+              <span class="font-medium">${escapeHtml(product.unidadVenta)}</span>
+            </div>
+            ` : ''}
+            ${product.unidadProduccion ? `
+            <div class="flex justify-between">
+              <span class="text-gray-600">Producción:</span>
+              <span class="font-medium">${escapeHtml(product.unidadProduccion)}</span>
+            </div>
+            ` : ''}
+            ${product.unidadesCompra && product.unidadesCompra.length > 0 ? `
+            <div>
+              <span class="text-gray-600">Compra por Proveedor:</span>
+              <div class="mt-1 space-y-1">
+                ${product.unidadesCompra.map(pu => {
+                  const supplierName = supplierNamesMap[pu.supplierId] || `ID: ${pu.supplierId}`;
+                  return `<div class="text-xs pl-2">• ${escapeHtml(supplierName)}: <span class="font-medium">${escapeHtml(pu.unidad)}</span></div>`;
+                }).join('')}
+              </div>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+        ` : ''}
+        ${product.conversiones && product.conversiones.length > 0 ? `
+        <div class="py-2 sm:py-3 border-b border-gray-200">
+          <div class="text-gray-600 font-light text-sm sm:text-base mb-2">Conversiones:</div>
+          <div class="space-y-1">
+            ${product.conversiones.map(conv => `
+              <div class="text-xs bg-gray-50 p-2 rounded border border-gray-200">
+                <span class="font-medium">1 ${escapeHtml(conv.fromUnit)}</span> = 
+                <span class="font-medium">${parseFloat(conv.factor).toFixed(4)}</span> 
+                <span class="font-medium">${escapeHtml(conv.toUnit)}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        ` : ''}
         ${product.variants && product.variants.length > 0 ? `
         <div class="py-2 sm:py-3 border-b border-gray-200">
           <div class="text-gray-600 font-light text-sm sm:text-base mb-2">Variantes:</div>
           <div class="space-y-2">
             ${product.variants.map(variant => {
-              const fullSku = variant.skuSuffix && product.sku ? getVariantSku(product.sku, variant.skuSuffix) : '';
+              const variantSku = variant.sku || '';
+              const unidadVenta = variant.unidadVenta || product.unidadVenta;
+              const unidadProduccion = variant.unidadProduccion || product.unidadProduccion;
+              const unidadesCompra = variant.unidadesCompra || product.unidadesCompra;
+              const conversiones = variant.conversiones || product.conversiones;
+              const esVendible = variant.esVendible !== undefined ? variant.esVendible : product.esVendible;
+              const esComprable = variant.esComprable !== undefined ? variant.esComprable : product.esComprable;
+              const esInsumo = variant.esInsumo !== undefined ? variant.esInsumo : product.esInsumo;
+              const esProducible = variant.esProducible !== undefined ? variant.esProducible : product.esProducible;
+              
               return `
                 <div class="bg-gray-50 p-2 sm:p-3 rounded border border-gray-200">
                   <div class="flex justify-between items-start mb-1">
@@ -312,12 +410,43 @@ async function viewProduct(productId) {
                       ${variant.active !== false ? 'Activa' : 'Inactiva'}
                     </span>
                   </div>
-                  ${fullSku ? `
-                  <div class="text-xs text-gray-600 mb-1">SKU: <span class="font-mono">${escapeHtml(fullSku)}</span></div>
+                  ${variantSku ? `
+                  <div class="text-xs text-gray-600 mb-1">SKU: <span class="font-mono">${escapeHtml(variantSku)}</span></div>
                   ` : ''}
                   <div class="text-xs text-gray-600">Precio: <span class="text-red-600 font-medium">$${parseFloat(variant.price || 0).toFixed(2)}</span></div>
                   ${variant.cost !== undefined ? `
                   <div class="text-xs text-gray-600">Costo: <span class="text-gray-700 font-medium">$${parseFloat(variant.cost || 0).toFixed(2)}</span></div>
+                  ` : ''}
+                  ${(unidadVenta || unidadProduccion || (unidadesCompra && unidadesCompra.length > 0)) ? `
+                  <div class="text-xs text-gray-600 mt-2 pt-2 border-t border-gray-300">
+                    <div class="font-medium mb-1">Unidades:</div>
+                    ${unidadVenta ? `<div>Venta: <span class="font-medium">${escapeHtml(unidadVenta)}</span></div>` : ''}
+                    ${unidadProduccion ? `<div>Producción: <span class="font-medium">${escapeHtml(unidadProduccion)}</span></div>` : ''}
+                    ${unidadesCompra && unidadesCompra.length > 0 ? `
+                    <div>Compra: ${unidadesCompra.map(pu => {
+                      const supplierName = supplierNamesMap[pu.supplierId] || pu.supplierId;
+                      return `<span class="font-medium">${escapeHtml(supplierName)}: ${escapeHtml(pu.unidad)}</span>`;
+                    }).join(', ')}</div>
+                    ` : ''}
+                  </div>
+                  ` : ''}
+                  ${conversiones && conversiones.length > 0 ? `
+                  <div class="text-xs text-gray-600 mt-2 pt-2 border-t border-gray-300">
+                    <div class="font-medium mb-1">Conversiones:</div>
+                    ${conversiones.map(conv => `
+                      <div>1 ${escapeHtml(conv.fromUnit)} = ${parseFloat(conv.factor).toFixed(4)} ${escapeHtml(conv.toUnit)}</div>
+                    `).join('')}
+                  </div>
+                  ` : ''}
+                  ${(esVendible || esComprable || esInsumo || esProducible) ? `
+                  <div class="text-xs mt-2 pt-2 border-t border-gray-300">
+                    <div class="flex flex-wrap gap-1">
+                      ${esVendible ? '<span class="px-1.5 py-0.5 bg-green-100 text-green-700 rounded border border-green-300">Vendible</span>' : ''}
+                      ${esComprable ? '<span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-300">Comprable</span>' : ''}
+                      ${esInsumo ? '<span class="px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded border border-orange-300">Insumo</span>' : ''}
+                      ${esProducible ? '<span class="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded border border-purple-300">Producible</span>' : ''}
+                    </div>
+                  </div>
                   ` : ''}
                 </div>
                 `;
@@ -371,84 +500,160 @@ function editProduct(productId) {
 }
 
 // Variants management
-function addVariantRow(variant = null) {
+async function addVariantRow(variant = null) {
   const variantsList = document.getElementById('product-variants-list');
   if (!variantsList) return;
   
-  const variantId = variant ? variant.id : Date.now().toString();
+  const variantKey = variant ? (variant.sku || variant.name) : Date.now().toString();
   const row = document.createElement('div');
-  row.className = 'border border-gray-200 rounded p-3 sm:p-4 bg-gray-50';
-  row.dataset.variantId = variantId;
+  row.className = 'border border-gray-200 rounded p-3 sm:p-4 bg-gray-50 mb-3';
+  row.dataset.variantKey = variantKey;
+  
+  // Load suppliers for purchase units
+  const suppliers = await loadSuppliers();
+  const supplierOptions = suppliers.map(supplier => 
+    `<option value="${supplier.id}">${escapeHtml(supplier.name)}</option>`
+  ).join('');
+  
+  // Get purchase units HTML for this variant
+  let purchaseUnitsHTML = '';
+  if (variant && variant.unidadesCompra && variant.unidadesCompra.length > 0) {
+    purchaseUnitsHTML = variant.unidadesCompra.map(pu => {
+      const supplierName = suppliers.find(s => s.id === pu.supplierId)?.name || pu.supplierId;
+      return `
+        <div class="flex items-center gap-2 text-xs">
+          <span>${escapeHtml(supplierName)}:</span>
+          <select class="variant-purchase-unit-unidad border border-gray-300 rounded px-1 py-0.5" data-supplier-id="${pu.supplierId}">
+            <option value="">Seleccione...</option>
+            ${getUnitOptionsHTML(pu.unidad)}
+          </select>
+          <button type="button" class="remove-variant-purchase-unit text-red-600 hover:text-red-800" data-supplier-id="${pu.supplierId}">×</button>
+        </div>
+      `;
+    }).join('');
+  }
+  
+  // Get conversions HTML for this variant
+  let conversionsHTML = '';
+  if (variant && variant.conversiones && variant.conversiones.length > 0) {
+    conversionsHTML = variant.conversiones.map(conv => `
+      <div class="flex items-center gap-2 text-xs">
+        <span>1 ${escapeHtml(conv.fromUnit)} =</span>
+        <input type="number" class="variant-conversion-factor border border-gray-300 rounded px-1 py-0.5 w-20" 
+          step="0.0001" min="0.0001" value="${parseFloat(conv.factor || 1).toFixed(4)}"
+          data-from="${conv.fromUnit}" data-to="${conv.toUnit}">
+        <span>${escapeHtml(conv.toUnit)}</span>
+        <button type="button" class="remove-variant-conversion text-red-600 hover:text-red-800" 
+          data-from="${conv.fromUnit}" data-to="${conv.toUnit}">×</button>
+      </div>
+    `).join('');
+  }
   
   row.innerHTML = `
-    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-3 items-end">
-      <div class="sm:col-span-3">
-        <label class="block text-xs text-gray-600 mb-1">Nombre</label>
-        <input type="text" class="variant-name w-full px-2 py-1.5 border border-gray-300 rounded text-sm" 
-          value="${variant ? escapeHtml(variant.name) : ''}" 
-          placeholder="Ej: Pequeña, Grande, Chocolate" required>
+    <div class="space-y-3">
+      <!-- Basic Info Row -->
+      <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-3 items-end">
+        <div class="sm:col-span-3">
+          <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+          <input type="text" class="variant-name w-full px-2 py-1.5 border border-gray-300 rounded text-sm" 
+            value="${variant ? escapeHtml(variant.name) : ''}" 
+            placeholder="Ej: Pequeña, Grande, Chocolate" required>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-xs text-gray-600 mb-1">SKU</label>
+          <input type="text" class="variant-sku w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono" 
+            value="${variant ? escapeHtml(variant.sku || '') : ''}" 
+            placeholder="SKU completo de la variante">
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-xs text-gray-600 mb-1">Precio</label>
+          <input type="number" class="variant-price w-full px-2 py-1.5 border border-gray-300 rounded text-sm" 
+            step="0.01" min="0" value="${variant ? parseFloat(variant.price || 0).toFixed(2) : ''}" required>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-xs text-gray-600 mb-1">Costo</label>
+          <input type="number" class="variant-cost w-full px-2 py-1.5 border border-gray-300 rounded text-sm" 
+            step="0.01" min="0" value="${variant ? (variant.cost !== undefined ? parseFloat(variant.cost).toFixed(2) : '') : ''}">
+        </div>
+        <div class="sm:col-span-2">
+          <label class="flex items-center">
+            <input type="checkbox" class="variant-active mr-2" ${variant ? (variant.active !== false ? 'checked' : '') : 'checked'}>
+            <span class="text-xs text-gray-600">Activa</span>
+          </label>
+        </div>
+        <div class="sm:col-span-1">
+          <button type="button" class="remove-variant-btn w-full px-2 py-1.5 text-red-600 hover:bg-red-50 border border-red-600 rounded text-sm transition-colors">
+            ×
+          </button>
+        </div>
       </div>
-      <div class="sm:col-span-2">
-        <label class="block text-xs text-gray-600 mb-1">Sufijo SKU</label>
-        <input type="text" class="variant-sku-suffix w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono" 
-          value="${variant ? escapeHtml(variant.skuSuffix || '') : ''}" 
-          placeholder="PEQ, GRD, etc.">
-        <div class="text-xs text-gray-500 mt-1 variant-sku-preview"></div>
+      
+      <!-- Units Row -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-200">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">Unidad Venta</label>
+          <select class="variant-unidad-venta w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+            <option value="">Heredar del producto</option>
+            ${getUnitOptionsHTML(variant ? variant.unidadVenta : '')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">Unidad Producción</label>
+          <select class="variant-unidad-produccion w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+            <option value="">Heredar del producto</option>
+            ${getUnitOptionsHTML(variant ? variant.unidadProduccion : '')}
+          </select>
+        </div>
       </div>
-      <div class="sm:col-span-2">
-        <label class="block text-xs text-gray-600 mb-1">Precio</label>
-        <input type="number" class="variant-price w-full px-2 py-1.5 border border-gray-300 rounded text-sm" 
-          step="0.01" min="0" value="${variant ? parseFloat(variant.price || 0).toFixed(2) : ''}" required>
+      
+      <!-- Purchase Units Row -->
+      <div class="pt-2 border-t border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-xs text-gray-600">Unidades de Compra</label>
+          <button type="button" class="add-variant-purchase-unit-btn px-2 py-1 text-xs bg-gray-200 text-gray-700 border border-gray-300 rounded hover:bg-gray-300">
+            + Agregar
+          </button>
+        </div>
+        <div class="variant-purchase-units-list space-y-1">
+          ${purchaseUnitsHTML}
+        </div>
       </div>
-      <div class="sm:col-span-2">
-        <label class="block text-xs text-gray-600 mb-1">Costo</label>
-        <input type="number" class="variant-cost w-full px-2 py-1.5 border border-gray-300 rounded text-sm" 
-          step="0.01" min="0" value="${variant ? (variant.cost !== undefined ? parseFloat(variant.cost).toFixed(2) : '') : ''}">
+      
+      <!-- Conversions Row -->
+      <div class="pt-2 border-t border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-xs text-gray-600">Conversiones</label>
+          <button type="button" class="add-variant-conversion-btn px-2 py-1 text-xs bg-gray-200 text-gray-700 border border-gray-300 rounded hover:bg-gray-300">
+            + Agregar
+          </button>
+        </div>
+        <div class="variant-conversions-list space-y-1">
+          ${conversionsHTML}
+        </div>
       </div>
-      <div class="sm:col-span-2">
+      
+      <!-- Roles Row -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-gray-200">
         <label class="flex items-center">
-          <input type="checkbox" class="variant-active mr-2" ${variant ? (variant.active !== false ? 'checked' : '') : 'checked'}>
-          <span class="text-xs text-gray-600">Activa</span>
+          <input type="checkbox" class="variant-es-vendible mr-2" ${variant ? (variant.esVendible === true ? 'checked' : '') : ''}>
+          <span class="text-xs text-gray-600">Vendible</span>
         </label>
-      </div>
-      <div class="sm:col-span-1">
-        <button type="button" class="remove-variant-btn w-full px-2 py-1.5 text-red-600 hover:bg-red-50 border border-red-600 rounded text-sm transition-colors">
-          ×
-        </button>
+        <label class="flex items-center">
+          <input type="checkbox" class="variant-es-comprable mr-2" ${variant ? (variant.esComprable === true ? 'checked' : '') : ''}>
+          <span class="text-xs text-gray-600">Comprable</span>
+        </label>
+        <label class="flex items-center">
+          <input type="checkbox" class="variant-es-insumo mr-2" ${variant ? (variant.esInsumo === true ? 'checked' : '') : ''}>
+          <span class="text-xs text-gray-600">Insumo</span>
+        </label>
+        <label class="flex items-center">
+          <input type="checkbox" class="variant-es-producible mr-2" ${variant ? (variant.esProducible === true ? 'checked' : '') : ''}>
+          <span class="text-xs text-gray-600">Producible</span>
+        </label>
       </div>
     </div>
   `;
   
-  // Update SKU preview when SKU suffix or parent SKU changes
-  const updateSkuPreview = () => {
-    const parentSku = document.getElementById('product-sku')?.value.trim();
-    const suffix = row.querySelector('.variant-sku-suffix')?.value.trim();
-    const preview = row.querySelector('.variant-sku-preview');
-    if (preview) {
-      if (parentSku && suffix) {
-        preview.textContent = `SKU: ${getVariantSku(parentSku, suffix)}`;
-        preview.classList.remove('hidden');
-      } else {
-        preview.textContent = '';
-        preview.classList.add('hidden');
-      }
-    }
-  };
-  
-  // Listen to SKU suffix changes
-  const skuSuffixInput = row.querySelector('.variant-sku-suffix');
-  if (skuSuffixInput) {
-    skuSuffixInput.addEventListener('input', updateSkuPreview);
-  }
-  
-  // Listen to parent SKU changes
-  const parentSkuInput = document.getElementById('product-sku');
-  if (parentSkuInput) {
-    parentSkuInput.addEventListener('input', updateSkuPreview);
-  }
-  
-  // Initial preview update
-  updateSkuPreview();
   
   // Remove button handler
   const removeBtn = row.querySelector('.remove-variant-btn');
@@ -458,7 +663,103 @@ function addVariantRow(variant = null) {
     });
   }
   
+  // Add variant purchase unit button handler
+  const addVariantPurchaseUnitBtn = row.querySelector('.add-variant-purchase-unit-btn');
+  if (addVariantPurchaseUnitBtn) {
+    addVariantPurchaseUnitBtn.addEventListener('click', async () => {
+      await addVariantPurchaseUnitRow(row, suppliers);
+    });
+  }
+  
+  // Add variant conversion button handler
+  const addVariantConversionBtn = row.querySelector('.add-variant-conversion-btn');
+  if (addVariantConversionBtn) {
+    addVariantConversionBtn.addEventListener('click', () => {
+      addVariantConversionRow(row);
+    });
+  }
+  
+  // Remove variant purchase unit handlers
+  row.querySelectorAll('.remove-variant-purchase-unit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.closest('.flex').remove();
+    });
+  });
+  
+  // Remove variant conversion handlers
+  row.querySelectorAll('.remove-variant-conversion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.closest('.flex').remove();
+    });
+  });
+  
   variantsList.appendChild(row);
+}
+
+// Add purchase unit row for variant
+async function addVariantPurchaseUnitRow(variantRow, suppliers) {
+  const purchaseUnitsList = variantRow.querySelector('.variant-purchase-units-list');
+  if (!purchaseUnitsList) return;
+  
+  if (suppliers.length === 0) {
+    await showError('No hay proveedores registrados. Debe crear proveedores primero.');
+    return;
+  }
+  
+  const supplierOptions = suppliers.map(supplier => 
+    `<option value="${supplier.id}">${escapeHtml(supplier.name)}</option>`
+  ).join('');
+  
+  const unitRow = document.createElement('div');
+  unitRow.className = 'flex items-center gap-2 text-xs';
+  unitRow.innerHTML = `
+    <select class="variant-purchase-unit-supplier border border-gray-300 rounded px-1 py-0.5">
+      <option value="">Seleccione proveedor...</option>
+      ${supplierOptions}
+    </select>
+    <span>:</span>
+    <select class="variant-purchase-unit-unidad border border-gray-300 rounded px-1 py-0.5">
+      <option value="">Seleccione...</option>
+      ${getUnitOptionsHTML('')}
+    </select>
+    <button type="button" class="remove-variant-purchase-unit text-red-600 hover:text-red-800">×</button>
+  `;
+  
+  unitRow.querySelector('.remove-variant-purchase-unit').addEventListener('click', () => {
+    unitRow.remove();
+  });
+  
+  purchaseUnitsList.appendChild(unitRow);
+}
+
+// Add conversion row for variant
+function addVariantConversionRow(variantRow) {
+  const conversionsList = variantRow.querySelector('.variant-conversions-list');
+  if (!conversionsList) return;
+  
+  const conversionRow = document.createElement('div');
+  conversionRow.className = 'flex items-center gap-2 text-xs';
+  conversionRow.innerHTML = `
+    <span>1</span>
+    <select class="variant-conversion-from border border-gray-300 rounded px-1 py-0.5">
+      <option value="">De...</option>
+      ${getUnitOptionsHTML('')}
+    </select>
+    <span>=</span>
+    <input type="number" class="variant-conversion-factor border border-gray-300 rounded px-1 py-0.5 w-20" 
+      step="0.0001" min="0.0001" placeholder="Factor">
+    <select class="variant-conversion-to border border-gray-300 rounded px-1 py-0.5">
+      <option value="">A...</option>
+      ${getUnitOptionsHTML('')}
+    </select>
+    <button type="button" class="remove-variant-conversion text-red-600 hover:text-red-800">×</button>
+  `;
+  
+  conversionRow.querySelector('.remove-variant-conversion').addEventListener('click', () => {
+    conversionRow.remove();
+  });
+  
+  conversionsList.appendChild(conversionRow);
 }
 
 function collectVariants() {
@@ -466,15 +767,50 @@ function collectVariants() {
   if (!variantsList) return [];
   
   const variants = [];
-  const rows = variantsList.querySelectorAll('[data-variant-id]');
+  const rows = variantsList.querySelectorAll('[data-variant-key]');
   
   rows.forEach(row => {
-    const variantId = row.dataset.variantId;
     const name = row.querySelector('.variant-name')?.value.trim();
-    const skuSuffix = row.querySelector('.variant-sku-suffix')?.value.trim();
+    const sku = row.querySelector('.variant-sku')?.value.trim();
     const priceValue = row.querySelector('.variant-price')?.value.trim();
     const costValue = row.querySelector('.variant-cost')?.value.trim();
     const active = row.querySelector('.variant-active')?.checked;
+    
+    // Units
+    const unidadVenta = row.querySelector('.variant-unidad-venta')?.value.trim();
+    const unidadProduccion = row.querySelector('.variant-unidad-produccion')?.value.trim();
+    
+    // Roles
+    const esVendible = row.querySelector('.variant-es-vendible')?.checked;
+    const esComprable = row.querySelector('.variant-es-comprable')?.checked;
+    const esInsumo = row.querySelector('.variant-es-insumo')?.checked;
+    const esProducible = row.querySelector('.variant-es-producible')?.checked;
+    
+    // Purchase units
+    const purchaseUnits = [];
+    const purchaseUnitRows = row.querySelectorAll('.variant-purchase-units-list > .flex');
+    purchaseUnitRows.forEach(puRow => {
+      const supplierId = puRow.querySelector('.variant-purchase-unit-supplier')?.value.trim();
+      const unidad = puRow.querySelector('.variant-purchase-unit-unidad')?.value.trim();
+      if (supplierId && unidad) {
+        purchaseUnits.push({ supplierId, unidad });
+      }
+    });
+    
+    // Conversions
+    const conversions = [];
+    const conversionRows = row.querySelectorAll('.variant-conversions-list > .flex');
+    conversionRows.forEach(convRow => {
+      const fromUnit = convRow.querySelector('.variant-conversion-from')?.value.trim();
+      const toUnit = convRow.querySelector('.variant-conversion-to')?.value.trim();
+      const factorValue = convRow.querySelector('.variant-conversion-factor')?.value.trim();
+      if (fromUnit && toUnit && factorValue) {
+        const factor = parseFloat(factorValue);
+        if (!isNaN(factor) && factor > 0) {
+          conversions.push({ fromUnit, toUnit, factor });
+        }
+      }
+    });
     
     if (!name) return; // Skip incomplete variants
     
@@ -482,14 +818,13 @@ function collectVariants() {
     if (isNaN(price) || price < 0) return; // Skip invalid prices
     
     const variant = {
-      id: variantId,
       name,
       price,
       active: active !== false
     };
     
-    if (skuSuffix) {
-      variant.skuSuffix = skuSuffix;
+    if (sku) {
+      variant.sku = sku;
     }
     
     if (costValue) {
@@ -498,6 +833,26 @@ function collectVariants() {
         variant.cost = cost;
       }
     }
+    
+    // Add units (only if defined, otherwise inherit from parent)
+    if (unidadVenta) {
+      variant.unidadVenta = unidadVenta;
+    }
+    if (unidadProduccion) {
+      variant.unidadProduccion = unidadProduccion;
+    }
+    if (purchaseUnits.length > 0) {
+      variant.unidadesCompra = purchaseUnits;
+    }
+    if (conversions.length > 0) {
+      variant.conversiones = conversions;
+    }
+    
+    // Add roles (only if checked, otherwise inherit from parent)
+    if (esVendible) variant.esVendible = true;
+    if (esComprable) variant.esComprable = true;
+    if (esInsumo) variant.esInsumo = true;
+    if (esProducible) variant.esProducible = true;
     
     variants.push(variant);
   });
@@ -514,21 +869,267 @@ function validateVariants(variants, parentSku) {
     return 'Las variantes deben tener nombres únicos';
   }
   
-  // Check unique SKU suffixes
-  const suffixes = variants
-    .filter(v => v.skuSuffix)
-    .map(v => v.skuSuffix.toUpperCase());
-  if (new Set(suffixes).size !== suffixes.length) {
-    return 'Los sufijos de SKU deben ser únicos';
+  // Check unique SKUs
+  const skus = variants
+    .filter(v => v.sku)
+    .map(v => v.sku.toUpperCase());
+  if (new Set(skus).size !== skus.length) {
+    return 'Los SKUs de las variantes deben ser únicos';
   }
   
-  // Check unique full SKUs if parent SKU exists
-  if (parentSku) {
-    const fullSkus = variants
-      .filter(v => v.skuSuffix)
-      .map(v => getVariantSku(parentSku, v.skuSuffix));
-    if (new Set(fullSkus).size !== fullSkus.length) {
-      return 'Los SKUs completos de las variantes deben ser únicos';
+  return null;
+}
+
+// Units management
+let suppliersCache = null;
+
+// Load suppliers for purchase units selector
+async function loadSuppliers() {
+  if (suppliersCache) return suppliersCache;
+  try {
+    const suppliers = await nrd.suppliers.getAll();
+    suppliersCache = Array.isArray(suppliers) ? suppliers : Object.values(suppliers || {});
+    return suppliersCache;
+  } catch (error) {
+    logger.error('Failed to load suppliers', error);
+    return [];
+  }
+}
+
+// Get unit options HTML
+function getUnitOptionsHTML(selectedUnit = '') {
+  const units = [
+    { value: 'kg', label: 'Kilogramo (kg)' },
+    { value: 'g', label: 'Gramo (g)' },
+    { value: 'litro', label: 'Litro (L)' },
+    { value: 'ml', label: 'Mililitro (mL)' },
+    { value: 'unidad', label: 'Unidad' },
+    { value: 'caja', label: 'Caja' },
+    { value: 'paquete', label: 'Paquete' },
+    { value: 'bolsa', label: 'Bolsa' },
+    { value: 'botella', label: 'Botella' },
+    { value: 'lata', label: 'Lata' }
+  ];
+  
+  return units.map(unit => 
+    `<option value="${unit.value}" ${selectedUnit === unit.value ? 'selected' : ''}>${unit.label}</option>`
+  ).join('');
+}
+
+// Add purchase unit row
+async function addPurchaseUnitRow(purchaseUnit = null) {
+  const purchaseUnitsList = document.getElementById('purchase-units-list');
+  if (!purchaseUnitsList) return;
+  
+  const suppliers = await loadSuppliers();
+  if (suppliers.length === 0) {
+    await showError('No hay proveedores registrados. Debe crear proveedores primero.');
+    return;
+  }
+  
+  const rowId = purchaseUnit ? purchaseUnit.supplierId : Date.now().toString();
+  const row = document.createElement('div');
+  row.className = 'border border-gray-200 rounded p-2 sm:p-3 bg-gray-50';
+  row.dataset.purchaseUnitId = rowId;
+  
+  const supplierOptions = suppliers.map(supplier => 
+    `<option value="${supplier.id}" ${purchaseUnit && purchaseUnit.supplierId === supplier.id ? 'selected' : ''}>${escapeHtml(supplier.name)}</option>`
+  ).join('');
+  
+  row.innerHTML = `
+    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+      <div class="sm:col-span-5">
+        <label class="block text-xs text-gray-600 mb-1">Proveedor</label>
+        <select class="purchase-unit-supplier w-full px-2 py-1.5 border border-gray-300 rounded text-sm" required>
+          <option value="">Seleccione...</option>
+          ${supplierOptions}
+        </select>
+      </div>
+      <div class="sm:col-span-5">
+        <label class="block text-xs text-gray-600 mb-1">Unidad</label>
+        <select class="purchase-unit-unidad w-full px-2 py-1.5 border border-gray-300 rounded text-sm" required>
+          <option value="">Seleccione...</option>
+          ${getUnitOptionsHTML(purchaseUnit ? purchaseUnit.unidad : '')}
+        </select>
+      </div>
+      <div class="sm:col-span-2">
+        <button type="button" class="remove-purchase-unit-btn w-full px-2 py-1.5 text-red-600 hover:bg-red-50 border border-red-600 rounded text-sm transition-colors">
+          ×
+        </button>
+      </div>
+    </div>
+  `;
+  
+  const removeBtn = row.querySelector('.remove-purchase-unit-btn');
+  if (removeBtn) {
+    removeBtn.addEventListener('click', () => {
+      row.remove();
+    });
+  }
+  
+  purchaseUnitsList.appendChild(row);
+}
+
+// Collect purchase units
+function collectPurchaseUnits() {
+  const purchaseUnitsList = document.getElementById('purchase-units-list');
+  if (!purchaseUnitsList) return [];
+  
+  const purchaseUnits = [];
+  const rows = purchaseUnitsList.querySelectorAll('[data-purchase-unit-id]');
+  const supplierIds = new Set();
+  
+  rows.forEach(row => {
+    const supplierId = row.querySelector('.purchase-unit-supplier')?.value.trim();
+    const unidad = row.querySelector('.purchase-unit-unidad')?.value.trim();
+    
+    if (!supplierId || !unidad) return; // Skip incomplete rows
+    
+    if (supplierIds.has(supplierId)) {
+      // Duplicate supplier - skip or show error
+      return;
+    }
+    
+    supplierIds.add(supplierId);
+    purchaseUnits.push({ supplierId, unidad });
+  });
+  
+  return purchaseUnits;
+}
+
+// Add conversion row
+function addConversionRow(conversion = null) {
+  const conversionsList = document.getElementById('conversions-list');
+  if (!conversionsList) return;
+  
+  const rowId = conversion ? `${conversion.fromUnit}_${conversion.toUnit}` : Date.now().toString();
+  const row = document.createElement('div');
+  row.className = 'border border-gray-200 rounded p-2 sm:p-3 bg-gray-50';
+  row.dataset.conversionId = rowId;
+  
+  row.innerHTML = `
+    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+      <div class="sm:col-span-3">
+        <label class="block text-xs text-gray-600 mb-1">De</label>
+        <select class="conversion-from w-full px-2 py-1.5 border border-gray-300 rounded text-sm" required>
+          <option value="">Seleccione...</option>
+          ${getUnitOptionsHTML(conversion ? conversion.fromUnit : '')}
+        </select>
+      </div>
+      <div class="sm:col-span-3">
+        <label class="block text-xs text-gray-600 mb-1">A</label>
+        <select class="conversion-to w-full px-2 py-1.5 border border-gray-300 rounded text-sm" required>
+          <option value="">Seleccione...</option>
+          ${getUnitOptionsHTML(conversion ? conversion.toUnit : '')}
+        </select>
+      </div>
+      <div class="sm:col-span-4">
+        <label class="block text-xs text-gray-600 mb-1">Factor de Conversión</label>
+        <input type="number" class="conversion-factor w-full px-2 py-1.5 border border-gray-300 rounded text-sm" 
+          step="0.0001" min="0.0001" 
+          value="${conversion ? parseFloat(conversion.factor || 1).toFixed(4) : ''}" 
+          placeholder="Ej: 1000 (1 kg = 1000 g)" required>
+        <div class="text-xs text-gray-500 mt-1 conversion-preview"></div>
+      </div>
+      <div class="sm:col-span-2">
+        <button type="button" class="remove-conversion-btn w-full px-2 py-1.5 text-red-600 hover:bg-red-50 border border-red-600 rounded text-sm transition-colors">
+          ×
+        </button>
+      </div>
+    </div>
+  `;
+  
+  // Update preview when values change
+  const updatePreview = () => {
+    const fromUnit = row.querySelector('.conversion-from')?.value;
+    const toUnit = row.querySelector('.conversion-to')?.value;
+    const factor = row.querySelector('.conversion-factor')?.value;
+    const preview = row.querySelector('.conversion-preview');
+    
+    if (preview && fromUnit && toUnit && factor) {
+      preview.textContent = `1 ${fromUnit} = ${parseFloat(factor).toFixed(4)} ${toUnit}`;
+      preview.classList.remove('hidden');
+    } else {
+      preview.textContent = '';
+      preview.classList.add('hidden');
+    }
+  };
+  
+  row.querySelector('.conversion-from')?.addEventListener('change', updatePreview);
+  row.querySelector('.conversion-to')?.addEventListener('change', updatePreview);
+  row.querySelector('.conversion-factor')?.addEventListener('input', updatePreview);
+  updatePreview();
+  
+  const removeBtn = row.querySelector('.remove-conversion-btn');
+  if (removeBtn) {
+    removeBtn.addEventListener('click', () => {
+      row.remove();
+    });
+  }
+  
+  conversionsList.appendChild(row);
+}
+
+// Collect conversions
+function collectConversions() {
+  const conversionsList = document.getElementById('conversions-list');
+  if (!conversionsList) return [];
+  
+  const conversions = [];
+  const rows = conversionsList.querySelectorAll('[data-conversion-id]');
+  const conversionKeys = new Set();
+  
+  rows.forEach(row => {
+    const fromUnit = row.querySelector('.conversion-from')?.value.trim();
+    const toUnit = row.querySelector('.conversion-to')?.value.trim();
+    const factorValue = row.querySelector('.conversion-factor')?.value.trim();
+    
+    if (!fromUnit || !toUnit || !factorValue) return; // Skip incomplete rows
+    
+    const factor = parseFloat(factorValue);
+    if (isNaN(factor) || factor <= 0) return; // Skip invalid factors
+    
+    const key = `${fromUnit}_${toUnit}`;
+    if (conversionKeys.has(key)) {
+      // Duplicate conversion - skip
+      return;
+    }
+    
+    if (fromUnit === toUnit) {
+      // Same unit conversion - skip
+      return;
+    }
+    
+    conversionKeys.add(key);
+    conversions.push({ fromUnit, toUnit, factor });
+  });
+  
+  return conversions;
+}
+
+// Validate conversions
+function validateConversions(conversions) {
+  if (conversions.length === 0) return null;
+  
+  // Check for duplicate conversions
+  const keys = conversions.map(c => `${c.fromUnit}_${c.toUnit}`);
+  if (new Set(keys).size !== keys.length) {
+    return 'No puede haber conversiones duplicadas entre las mismas unidades';
+  }
+  
+  // Check for circular conversions (A->B and B->A with incompatible factors)
+  for (let i = 0; i < conversions.length; i++) {
+    for (let j = i + 1; j < conversions.length; j++) {
+      const c1 = conversions[i];
+      const c2 = conversions[j];
+      
+      if (c1.fromUnit === c2.toUnit && c1.toUnit === c2.fromUnit) {
+        // Check if factors are consistent (c1.factor * c2.factor should be close to 1)
+        const product = c1.factor * c2.factor;
+        if (Math.abs(product - 1) > 0.01) {
+          return `Las conversiones entre ${c1.fromUnit} y ${c1.toUnit} no son consistentes`;
+        }
+      }
     }
   }
   
@@ -572,8 +1173,24 @@ function setupProductFormHandler() {
   // Add variant button handler
   const addVariantBtn = document.getElementById('add-variant-btn');
   if (addVariantBtn) {
-    addVariantBtn.addEventListener('click', () => {
-      addVariantRow();
+    addVariantBtn.addEventListener('click', async () => {
+      await addVariantRow();
+    });
+  }
+  
+  // Add purchase unit button handler
+  const addPurchaseUnitBtn = document.getElementById('add-purchase-unit-btn');
+  if (addPurchaseUnitBtn) {
+    addPurchaseUnitBtn.addEventListener('click', async () => {
+      await addPurchaseUnitRow();
+    });
+  }
+  
+  // Add conversion button handler
+  const addConversionBtn = document.getElementById('add-conversion-btn');
+  if (addConversionBtn) {
+    addConversionBtn.addEventListener('click', () => {
+      addConversionRow();
     });
   }
   
@@ -587,6 +1204,12 @@ function setupProductFormHandler() {
     const costValue = document.getElementById('product-cost').value.trim();
     const cost = costValue ? parseFloat(costValue) : undefined;
     const active = document.getElementById('product-active').checked;
+    
+    // Get roles
+    const esVendible = document.getElementById('product-es-vendible').checked;
+    const esComprable = document.getElementById('product-es-comprable').checked;
+    const esInsumo = document.getElementById('product-es-insumo').checked;
+    const esProducible = document.getElementById('product-es-producible').checked;
 
     if (!name || isNaN(price) || price < 0) {
       await showError('Por favor complete todos los campos requeridos correctamente (nombre y precio > 0)');
@@ -605,6 +1228,19 @@ function setupProductFormHandler() {
       await showError(variantError);
       return;
     }
+    
+    // Collect units
+    const unidadVenta = document.getElementById('product-unidad-venta').value.trim();
+    const unidadProduccion = document.getElementById('product-unidad-produccion').value.trim();
+    const purchaseUnits = collectPurchaseUnits();
+    const conversions = collectConversions();
+    
+    // Validate conversions
+    const conversionError = validateConversions(conversions);
+    if (conversionError) {
+      await showError(conversionError);
+      return;
+    }
 
     showSpinner('Guardando producto...');
     try {
@@ -617,6 +1253,25 @@ function setupProductFormHandler() {
       }
       if (variants.length > 0) {
         productData.variants = variants;
+      }
+      // Add roles (always include them, set to true or false)
+      productData.esVendible = esVendible;
+      productData.esComprable = esComprable;
+      productData.esInsumo = esInsumo;
+      productData.esProducible = esProducible;
+      
+      // Add units
+      if (unidadVenta) {
+        productData.unidadVenta = unidadVenta;
+      }
+      if (unidadProduccion) {
+        productData.unidadProduccion = unidadProduccion;
+      }
+      if (purchaseUnits.length > 0) {
+        productData.unidadesCompra = purchaseUnits;
+      }
+      if (conversions.length > 0) {
+        productData.conversiones = conversions;
       }
       await saveProduct(productId || null, productData);
       hideSpinner();

@@ -7,7 +7,7 @@
   <title>NRD Productos</title>
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="styles.css?v=1768905776230">
+  <link rel="stylesheet" href="styles.css?v=1768906802730">
   <meta name="theme-color" content="#dc2626">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
@@ -171,6 +171,100 @@
               </label>
             </div>
             
+            <!-- Roles del Producto -->
+            <div class="mb-4 sm:mb-6 pt-4 sm:pt-6 border-t border-gray-200">
+              <label class="block mb-3 text-xs uppercase tracking-wider text-gray-600">Roles del Producto</label>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label class="flex items-center">
+                  <input type="checkbox" id="product-es-vendible" class="mr-2">
+                  <span class="text-xs text-gray-600">Es Vendible</span>
+                </label>
+                <label class="flex items-center">
+                  <input type="checkbox" id="product-es-comprable" class="mr-2">
+                  <span class="text-xs text-gray-600">Es Comprable</span>
+                </label>
+                <label class="flex items-center">
+                  <input type="checkbox" id="product-es-insumo" class="mr-2">
+                  <span class="text-xs text-gray-600">Es Insumo</span>
+                </label>
+                <label class="flex items-center">
+                  <input type="checkbox" id="product-es-producible" class="mr-2">
+                  <span class="text-xs text-gray-600">Es Producible</span>
+                </label>
+              </div>
+            </div>
+            
+            <!-- Unidades de Medida -->
+            <div class="mb-4 sm:mb-6 pt-4 sm:pt-6 border-t border-gray-200">
+              <label class="block mb-3 text-xs uppercase tracking-wider text-gray-600">Unidades de Medida</label>
+              
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label class="block mb-1.5 text-xs text-gray-600">Unidad de Venta</label>
+                  <select id="product-unidad-venta" 
+                    class="w-full px-2 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-red-600">
+                    <option value="">Seleccione...</option>
+                    <option value="kg">Kilogramo (kg)</option>
+                    <option value="g">Gramo (g)</option>
+                    <option value="litro">Litro (L)</option>
+                    <option value="ml">Mililitro (mL)</option>
+                    <option value="unidad">Unidad</option>
+                    <option value="caja">Caja</option>
+                    <option value="paquete">Paquete</option>
+                    <option value="bolsa">Bolsa</option>
+                    <option value="botella">Botella</option>
+                    <option value="lata">Lata</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block mb-1.5 text-xs text-gray-600">Unidad de Producción</label>
+                  <select id="product-unidad-produccion" 
+                    class="w-full px-2 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-red-600">
+                    <option value="">Seleccione...</option>
+                    <option value="kg">Kilogramo (kg)</option>
+                    <option value="g">Gramo (g)</option>
+                    <option value="litro">Litro (L)</option>
+                    <option value="ml">Mililitro (mL)</option>
+                    <option value="unidad">Unidad</option>
+                    <option value="caja">Caja</option>
+                    <option value="paquete">Paquete</option>
+                    <option value="bolsa">Bolsa</option>
+                    <option value="botella">Botella</option>
+                    <option value="lata">Lata</option>
+                  </select>
+                </div>
+              </div>
+              
+              <!-- Unidades de Compra por Proveedor -->
+              <div class="mb-4">
+                <div class="flex items-center justify-between mb-2">
+                  <label class="text-xs text-gray-600">Unidades de Compra por Proveedor</label>
+                  <button type="button" id="add-purchase-unit-btn" 
+                    class="px-2 py-1 text-xs bg-gray-200 text-gray-700 border border-gray-300 rounded hover:bg-gray-300 transition-colors">
+                    + Agregar
+                  </button>
+                </div>
+                <div id="purchase-units-list" class="space-y-2">
+                  <!-- Las unidades de compra se agregarán dinámicamente aquí -->
+                </div>
+              </div>
+              
+              <!-- Conversiones entre Unidades -->
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="text-xs text-gray-600">Conversiones entre Unidades</label>
+                  <button type="button" id="add-conversion-btn" 
+                    class="px-2 py-1 text-xs bg-gray-200 text-gray-700 border border-gray-300 rounded hover:bg-gray-300 transition-colors">
+                    + Agregar Conversión
+                  </button>
+                </div>
+                <p class="text-xs text-gray-500 mb-2">Defina factores de conversión entre unidades (ej: 1 kg = 1000 g, factor = 1000)</p>
+                <div id="conversions-list" class="space-y-2">
+                  <!-- Las conversiones se agregarán dinámicamente aquí -->
+                </div>
+              </div>
+            </div>
+            
             <!-- Variantes Section -->
             <div class="mb-4 sm:mb-6 pt-4 sm:pt-6 border-t border-gray-200">
               <div class="flex items-center justify-between mb-3">
@@ -286,18 +380,18 @@
   </script>
   
   <!-- App Scripts -->
-  <script src="logger.js?v=1768905776230"></script>
-  <script src="modal.js?v=1768905776230"></script>
-  <script src="auth.js?v=1768905776230"></script>
-  <script src="tabs/products.js?v=1768905776230"></script>
-  <script src="app.js?v=1768905776230"></script>
+  <script src="logger.js?v=1768906802730"></script>
+  <script src="modal.js?v=1768906802730"></script>
+  <script src="auth.js?v=1768906802730"></script>
+  <script src="tabs/products.js?v=1768906802730"></script>
+  <script src="app.js?v=1768906802730"></script>
 
   <script>
 
     // Register service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js?v=1768905776230')
+        navigator.serviceWorker.register('service-worker.js?v=1768906802730')
           .then(reg => {
             logger.info('Service Worker registered');
             reg.addEventListener('updatefound', () => {
