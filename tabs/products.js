@@ -153,9 +153,8 @@ function showProductForm(productId = null) {
   const variantsList = document.getElementById('product-variants-list');
   if (variantsList) variantsList.innerHTML = '';
   
-  // Clear purchase units list
-  const purchaseUnitsList = document.getElementById('purchase-units-list');
-  if (purchaseUnitsList) purchaseUnitsList.innerHTML = '';
+  // Clear purchase units table
+  await renderPurchaseUnitsTable([]);
   
   // Clear conversions list
   const conversionsList = document.getElementById('conversions-list');
@@ -202,9 +201,9 @@ function showProductForm(productId = null) {
         
         // Load purchase units
         if (product.unidadesCompra && Array.isArray(product.unidadesCompra)) {
-          for (const purchaseUnit of product.unidadesCompra) {
-            await addPurchaseUnitRow(purchaseUnit);
-          }
+          await renderPurchaseUnitsTable(product.unidadesCompra);
+        } else {
+          await renderPurchaseUnitsTable([]);
         }
         
         // Load conversions - generate automatically based on units
@@ -950,94 +949,450 @@ function getUnitOptionsHTML(selectedUnit = '') {
   ).join('');
 }
 
-// Add purchase unit row
-async function addPurchaseUnitRow(purchaseUnit = null) {
-  const purchaseUnitsList = document.getElementById('purchase-units-list');
-  if (!purchaseUnitsList) return;
+// Show purchase unit modal
+let currentEditingPurchaseUnit = null;
+async function showPurchaseUnitModal(purchaseUnit = null) {
+  currentEditingPurchaseUnit = purchaseUnit;
+  const modal = document.getElementById('purchase-unit-modal');
+  const supplierSelect = document.getElementById('purchase-unit-supplier');
+  const unidadSelect = document.getElementById('purchase-unit-unidad');
+  const conversionsSection = document.getElementById('purchase-unit-conversions-section');
+  const conversionsList = document.getElementById('purchase-unit-conversions-list');
   
+  if (!modal || !supplierSelect || !unidadSelect) return;
+  
+  // Load suppliers
   const suppliers = await loadSuppliers();
   if (suppliers.length === 0) {
     await showError('No hay proveedores registrados. Debe crear proveedores primero.');
     return;
   }
   
-  const rowId = purchaseUnit ? purchaseUnit.supplierId : Date.now().toString();
-  const row = document.createElement('div');
-  row.className = 'border border-gray-200 rounded p-2 sm:p-3 bg-gray-50';
-  row.dataset.purchaseUnitId = rowId;
+  // Populate supplier select
+  supplierSelect.innerHTML = '<option value="">Seleccione...</option>' + 
+    suppliers.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
   
-  const supplierOptions = suppliers.map(supplier => 
-    `<option value="${supplier.id}" ${purchaseUnit && purchaseUnit.supplierId === supplier.id ? 'selected' : ''}>${escapeHtml(supplier.name)}</option>`
-  ).join('');
+  // Reset form
+  unidadSelect.value = '';
+  conversionsList.innerHTML = '';
+  conversionsSection.classList.add('hidden');
   
-  row.innerHTML = `
-    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
-      <div class="sm:col-span-5">
-        <label class="block text-xs text-gray-600 mb-1">Proveedor</label>
-        <select class="purchase-unit-supplier w-full px-2 py-1.5 border border-gray-300 rounded text-sm" required>
-          <option value="">Seleccione...</option>
-          ${supplierOptions}
-        </select>
-      </div>
-      <div class="sm:col-span-5">
-        <label class="block text-xs text-gray-600 mb-1">Unidad</label>
-        <select class="purchase-unit-unidad w-full px-2 py-1.5 border border-gray-300 rounded text-sm" required>
-          <option value="">Seleccione...</option>
-          ${getUnitOptionsHTML(purchaseUnit ? purchaseUnit.unidad : '')}
-        </select>
-      </div>
-      <div class="sm:col-span-2">
-        <button type="button" class="remove-purchase-unit-btn w-full px-2 py-1.5 text-red-600 hover:bg-red-50 border border-red-600 rounded text-sm transition-colors">
+  // If editing, populate fields
+  if (purchaseUnit) {
+    supplierSelect.value = purchaseUnit.supplierId || '';
+    unidadSelect.value = purchaseUnit.unidad || '';
+    supplierSelect.disabled = true; // Can't change supplier when editing
+    
+    // Trigger conversion update to show existing conversions
+    setTimeout(() => {
+      updatePurchaseUnitModalConversions();
+      
+      // Load existing conversion factors if any
+      const existingConversions = collectConversions();
+      if (existingConversions.length > 0 && purchaseUnit.unidad) {
+        setTimeout(() => {
+          existingConversions.forEach(conv => {
+            if (conv.fromUnit === purchaseUnit.unidad || conv.toUnit === purchaseUnit.unidad) {
+              const input = conversionsList.querySelector(
+                `.purchase-unit-conversion-factor[data-from="${conv.fromUnit}"][data-to="${conv.toUnit}"]`
+              ) || conversionsList.querySelector(
+                `.purchase-unit-conversion-factor[data-from="${conv.toUnit}"][data-to="${conv.fromUnit}"]`
+              );
+              if (input) {
+                // If reverse conversion, use 1/factor
+                if (conv.fromUnit === purchaseUnit.unidad) {
+                  input.value = conv.factor.toFixed(4);
+                } else {
+                  input.value = (1 / conv.factor).toFixed(4);
+                }
+              }
+            }
+          });
+        }, 50);
+      }
+    }, 10);
+  } else {
+    supplierSelect.disabled = false;
+  }
+  
+  // Show modal
+  modal.classList.remove('hidden');
+}
+
+// Hide purchase unit modal
+function hidePurchaseUnitModal() {
+  const modal = document.getElementById('purchase-unit-modal');
+  if (modal) modal.classList.add('hidden');
+  currentEditingPurchaseUnit = null;
+  
+  // Reset form
+  const supplierSelect = document.getElementById('purchase-unit-supplier');
+  const unidadSelect = document.getElementById('purchase-unit-unidad');
+  const conversionsSection = document.getElementById('purchase-unit-conversions-section');
+  const conversionsList = document.getElementById('purchase-unit-conversions-list');
+  
+  if (supplierSelect) {
+    supplierSelect.value = '';
+    supplierSelect.disabled = false;
+  }
+  if (unidadSelect) unidadSelect.value = '';
+  if (conversionsSection) conversionsSection.classList.add('hidden');
+  if (conversionsList) conversionsList.innerHTML = '';
+}
+
+// Update conversions section in modal when unidad changes
+function updatePurchaseUnitModalConversions() {
+  const unidadSelect = document.getElementById('purchase-unit-unidad');
+  const conversionsSection = document.getElementById('purchase-unit-conversions-section');
+  const conversionsList = document.getElementById('purchase-unit-conversions-list');
+  
+  if (!unidadSelect || !conversionsSection || !conversionsList) return;
+  
+  const selectedUnidad = unidadSelect.value.trim();
+  if (!selectedUnidad) {
+    conversionsSection.classList.add('hidden');
+    return;
+  }
+  
+  // Get all existing units (venta, produccion, compra)
+  const allUnits = new Set();
+  const unidadVenta = document.getElementById('product-unidad-venta')?.value.trim();
+  const unidadProduccion = document.getElementById('product-unidad-produccion')?.value.trim();
+  
+  if (unidadVenta) allUnits.add(unidadVenta);
+  if (unidadProduccion) allUnits.add(unidadProduccion);
+  
+  // Get existing purchase units
+  const existingPurchaseUnits = collectPurchaseUnits();
+  existingPurchaseUnits.forEach(pu => {
+    if (pu.unidad && pu.unidad !== selectedUnidad) {
+      allUnits.add(pu.unidad);
+    }
+  });
+  
+  // Remove the currently selected unit
+  allUnits.delete(selectedUnidad);
+  
+  // If there are 2+ different units, show conversions
+  if (allUnits.size >= 1) {
+    conversionsSection.classList.remove('hidden');
+    conversionsList.innerHTML = '';
+    
+    allUnits.forEach(otherUnit => {
+      const conversionRow = document.createElement('div');
+      conversionRow.className = 'flex items-center gap-2 p-2 border border-gray-200 rounded';
+      conversionRow.innerHTML = `
+        <div class="flex-1 text-xs text-gray-600">
+          1 ${escapeHtml(selectedUnidad)} = 
+          <input type="number" 
+            class="purchase-unit-conversion-factor border border-gray-300 rounded px-2 py-1 w-24 text-sm" 
+            step="0.0001" min="0.0001" 
+            placeholder="Factor"
+            data-from="${selectedUnidad}" 
+            data-to="${otherUnit}">
+          ${escapeHtml(otherUnit)}
+        </div>
+      `;
+      conversionsList.appendChild(conversionRow);
+    });
+  } else {
+    conversionsSection.classList.add('hidden');
+  }
+}
+
+// Add purchase unit (called from modal)
+async function addPurchaseUnitRow(purchaseUnit = null) {
+  // This function now opens the modal instead of directly adding
+  await showPurchaseUnitModal(purchaseUnit);
+}
+
+// Save purchase unit from modal
+async function savePurchaseUnitFromModal() {
+  const supplierSelect = document.getElementById('purchase-unit-supplier');
+  const unidadSelect = document.getElementById('purchase-unit-unidad');
+  const conversionsList = document.getElementById('purchase-unit-conversions-list');
+  
+  if (!supplierSelect || !unidadSelect) return;
+  
+  const supplierId = supplierSelect.value.trim();
+  const unidad = unidadSelect.value.trim();
+  
+  if (!supplierId || !unidad) {
+    await showError('Por favor complete todos los campos requeridos');
+    return;
+  }
+  
+  // Check for duplicate supplier
+  const existingUnits = collectPurchaseUnits();
+  if (currentEditingPurchaseUnit) {
+    // When editing, exclude current unit from duplicate check
+    const otherUnits = existingUnits.filter(pu => pu.supplierId !== currentEditingPurchaseUnit.supplierId);
+    if (otherUnits.some(pu => pu.supplierId === supplierId)) {
+      await showError('Ya existe una unidad de compra para este proveedor');
+      return;
+    }
+  } else {
+    if (existingUnits.some(pu => pu.supplierId === supplierId)) {
+      await showError('Ya existe una unidad de compra para este proveedor');
+      return;
+    }
+  }
+  
+  // Collect conversions from modal and add them to general conversions
+  if (conversionsList) {
+    conversionsList.querySelectorAll('.purchase-unit-conversion-factor').forEach(input => {
+      const factor = parseFloat(input.value.trim());
+      if (!isNaN(factor) && factor > 0) {
+        const fromUnit = input.dataset.from;
+        const toUnit = input.dataset.to;
+        
+        // Add conversion to general conversions list if it doesn't exist
+        const conversionsListEl = document.getElementById('conversions-list');
+        if (conversionsListEl) {
+          const existingConversion = conversionsListEl.querySelector(
+            `[data-conversion-id="${fromUnit}-${toUnit}"]`
+          );
+          
+          if (!existingConversion) {
+            // Create conversion row
+            const conversionRow = document.createElement('div');
+            conversionRow.className = 'border border-gray-200 rounded p-2 sm:p-3 bg-gray-50';
+            conversionRow.dataset.conversionId = `${fromUnit}-${toUnit}`;
+            
+            // Use addConversionRowWithoutUpdate to maintain consistency
+            addConversionRowWithoutUpdate({
+              fromUnit: fromUnit,
+              toUnit: toUnit,
+              factor: factor
+            });
+          } else {
+            // Update existing conversion factor
+            const factorInput = existingConversion.querySelector('.conversion-factor');
+            if (factorInput) {
+              factorInput.value = factor.toFixed(4);
+            }
+          }
+        }
+      }
+    });
+  }
+  
+  // Add or update purchase unit in table
+  if (currentEditingPurchaseUnit) {
+    // Update existing
+    updatePurchaseUnitInTable(currentEditingPurchaseUnit.supplierId, { supplierId, unidad });
+  } else {
+    // Add new
+    addPurchaseUnitToTable({ supplierId, unidad });
+  }
+  
+  hidePurchaseUnitModal();
+  
+  // Regenerate conversions
+  setTimeout(() => updateConversionsFromUnits(), 10);
+}
+
+// Add purchase unit to table
+function addPurchaseUnitToTable(purchaseUnit) {
+  const tbody = document.getElementById('purchase-units-list');
+  const emptyMsg = document.getElementById('purchase-units-empty');
+  
+  if (!tbody) return;
+  
+  // Hide empty message
+  if (emptyMsg) emptyMsg.style.display = 'none';
+  
+  // Load supplier name
+  loadSuppliers().then(suppliers => {
+    const supplier = suppliers.find(s => s.id === purchaseUnit.supplierId);
+    const supplierName = supplier ? supplier.name : purchaseUnit.supplierId;
+    
+    const row = document.createElement('tr');
+    row.className = 'border-b border-gray-200 hover:bg-gray-50';
+    row.dataset.supplierId = purchaseUnit.supplierId;
+    row.dataset.unidad = purchaseUnit.unidad;
+    
+    row.innerHTML = `
+      <td class="px-3 py-2 text-sm">${escapeHtml(supplierName)}</td>
+      <td class="px-3 py-2 text-sm">${escapeHtml(purchaseUnit.unidad)}</td>
+      <td class="px-3 py-2 text-center">
+        <button type="button" class="edit-purchase-unit-btn text-blue-600 hover:text-blue-800 text-xs mr-2" data-supplier-id="${purchaseUnit.supplierId}">
+          Editar
+        </button>
+        <button type="button" class="remove-purchase-unit-btn text-red-600 hover:text-red-800 text-xs" data-supplier-id="${purchaseUnit.supplierId}">
           ×
         </button>
-      </div>
-    </div>
-  `;
+      </td>
+    `;
+    
+    // Add event listeners
+    const editBtn = row.querySelector('.edit-purchase-unit-btn');
+    const removeBtn = row.querySelector('.remove-purchase-unit-btn');
+    
+    if (editBtn) {
+      editBtn.addEventListener('click', async () => {
+        const existingUnits = collectPurchaseUnits();
+        const unit = existingUnits.find(pu => pu.supplierId === purchaseUnit.supplierId);
+        if (unit) {
+          await showPurchaseUnitModal(unit);
+        }
+      });
+    }
+    
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        row.remove();
+        updatePurchaseUnitsTableEmptyState();
+        setTimeout(() => updateConversionsFromUnits(), 10);
+      });
+    }
+    
+    tbody.appendChild(row);
+  });
+}
+
+// Update purchase unit in table
+function updatePurchaseUnitInTable(oldSupplierId, purchaseUnit) {
+  const row = document.querySelector(`tr[data-supplier-id="${oldSupplierId}"]`);
+  if (!row) return;
   
-  const removeBtn = row.querySelector('.remove-purchase-unit-btn');
-  if (removeBtn) {
-    removeBtn.addEventListener('click', () => {
-      row.remove();
-      // Regenerate conversions when a purchase unit is removed
-      setTimeout(() => updateConversionsFromUnits(), 10);
-    });
+  // Update data attributes
+  row.dataset.supplierId = purchaseUnit.supplierId;
+  row.dataset.unidad = purchaseUnit.unidad;
+  
+  // Update supplier name
+  loadSuppliers().then(suppliers => {
+    const supplier = suppliers.find(s => s.id === purchaseUnit.supplierId);
+    const supplierName = supplier ? supplier.name : purchaseUnit.supplierId;
+    
+    row.innerHTML = `
+      <td class="px-3 py-2 text-sm">${escapeHtml(supplierName)}</td>
+      <td class="px-3 py-2 text-sm">${escapeHtml(purchaseUnit.unidad)}</td>
+      <td class="px-3 py-2 text-center">
+        <button type="button" class="edit-purchase-unit-btn text-blue-600 hover:text-blue-800 text-xs mr-2" data-supplier-id="${purchaseUnit.supplierId}">
+          Editar
+        </button>
+        <button type="button" class="remove-purchase-unit-btn text-red-600 hover:text-red-800 text-xs" data-supplier-id="${purchaseUnit.supplierId}">
+          ×
+        </button>
+      </td>
+    `;
+    
+    // Re-attach event listeners
+    const editBtn = row.querySelector('.edit-purchase-unit-btn');
+    const removeBtn = row.querySelector('.remove-purchase-unit-btn');
+    
+    if (editBtn) {
+      editBtn.addEventListener('click', async () => {
+        const existingUnits = collectPurchaseUnits();
+        const unit = existingUnits.find(pu => pu.supplierId === purchaseUnit.supplierId);
+        if (unit) {
+          await showPurchaseUnitModal(unit);
+        }
+      });
+    }
+    
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        row.remove();
+        updatePurchaseUnitsTableEmptyState();
+        setTimeout(() => updateConversionsFromUnits(), 10);
+      });
+    }
+  });
+}
+
+// Update empty state of purchase units table
+function updatePurchaseUnitsTableEmptyState() {
+  const tbody = document.getElementById('purchase-units-list');
+  const emptyMsg = document.getElementById('purchase-units-empty');
+  
+  if (!tbody || !emptyMsg) return;
+  
+  const rows = tbody.querySelectorAll('tr');
+  if (rows.length === 0) {
+    emptyMsg.style.display = 'block';
+  } else {
+    emptyMsg.style.display = 'none';
+  }
+}
+
+// Render purchase units table
+async function renderPurchaseUnitsTable(purchaseUnits = []) {
+  const tbody = document.getElementById('purchase-units-list');
+  const emptyMsg = document.getElementById('purchase-units-empty');
+  
+  if (!tbody) return;
+  
+  tbody.innerHTML = '';
+  
+  if (purchaseUnits.length === 0) {
+    if (emptyMsg) emptyMsg.style.display = 'block';
+    return;
   }
   
-  // When purchase unit changes, regenerate conversions
-  const unidadSelect = row.querySelector('.purchase-unit-unidad');
-  if (unidadSelect) {
-    unidadSelect.addEventListener('change', () => {
-      setTimeout(() => updateConversionsFromUnits(), 10);
-    });
-  }
+  if (emptyMsg) emptyMsg.style.display = 'none';
   
-  purchaseUnitsList.appendChild(row);
+  const suppliers = await loadSuppliers();
   
-  // Regenerate conversions after adding the row
-  setTimeout(() => updateConversionsFromUnits(), 10);
+  purchaseUnits.forEach(pu => {
+    const supplier = suppliers.find(s => s.id === pu.supplierId);
+    const supplierName = supplier ? supplier.name : pu.supplierId;
+    
+    const row = document.createElement('tr');
+    row.className = 'border-b border-gray-200 hover:bg-gray-50';
+    row.dataset.supplierId = pu.supplierId;
+    row.dataset.unidad = pu.unidad;
+    
+    row.innerHTML = `
+      <td class="px-3 py-2 text-sm">${escapeHtml(supplierName)}</td>
+      <td class="px-3 py-2 text-sm">${escapeHtml(pu.unidad)}</td>
+      <td class="px-3 py-2 text-center">
+        <button type="button" class="edit-purchase-unit-btn text-blue-600 hover:text-blue-800 text-xs mr-2" data-supplier-id="${pu.supplierId}">
+          Editar
+        </button>
+        <button type="button" class="remove-purchase-unit-btn text-red-600 hover:text-red-800 text-xs" data-supplier-id="${pu.supplierId}">
+          ×
+        </button>
+      </td>
+    `;
+    
+    // Add event listeners
+    const editBtn = row.querySelector('.edit-purchase-unit-btn');
+    const removeBtn = row.querySelector('.remove-purchase-unit-btn');
+    
+    if (editBtn) {
+      editBtn.addEventListener('click', async () => {
+        await showPurchaseUnitModal(pu);
+      });
+    }
+    
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        row.remove();
+        updatePurchaseUnitsTableEmptyState();
+        setTimeout(() => updateConversionsFromUnits(), 10);
+      });
+    }
+    
+    tbody.appendChild(row);
+  });
 }
 
 // Collect purchase units
 function collectPurchaseUnits() {
-  const purchaseUnitsList = document.getElementById('purchase-units-list');
-  if (!purchaseUnitsList) return [];
+  const tbody = document.getElementById('purchase-units-list');
+  if (!tbody) return [];
   
   const purchaseUnits = [];
-  const rows = purchaseUnitsList.querySelectorAll('[data-purchase-unit-id]');
-  const supplierIds = new Set();
+  const rows = tbody.querySelectorAll('tr[data-supplier-id]');
   
   rows.forEach(row => {
-    const supplierId = row.querySelector('.purchase-unit-supplier')?.value.trim();
-    const unidad = row.querySelector('.purchase-unit-unidad')?.value.trim();
+    const supplierId = row.dataset.supplierId;
+    const unidad = row.dataset.unidad;
     
-    if (!supplierId || !unidad) return; // Skip incomplete rows
+    if (!supplierId || !unidad) return;
     
-    if (supplierIds.has(supplierId)) {
-      // Duplicate supplier - skip or show error
-      return;
-    }
-    
-    supplierIds.add(supplierId);
     purchaseUnits.push({ supplierId, unidad });
   });
   
@@ -1418,7 +1773,38 @@ function setupProductFormHandler() {
   const addPurchaseUnitBtn = document.getElementById('add-purchase-unit-btn');
   if (addPurchaseUnitBtn) {
     addPurchaseUnitBtn.addEventListener('click', async () => {
-      await addPurchaseUnitRow();
+      await showPurchaseUnitModal();
+    });
+  }
+  
+  // Purchase unit modal handlers
+  const closePurchaseUnitModalBtn = document.getElementById('close-purchase-unit-modal');
+  const cancelPurchaseUnitBtn = document.getElementById('cancel-purchase-unit-btn');
+  const purchaseUnitForm = document.getElementById('purchase-unit-form');
+  const purchaseUnitUnidadSelect = document.getElementById('purchase-unit-unidad');
+  
+  if (closePurchaseUnitModalBtn) {
+    closePurchaseUnitModalBtn.addEventListener('click', () => {
+      hidePurchaseUnitModal();
+    });
+  }
+  
+  if (cancelPurchaseUnitBtn) {
+    cancelPurchaseUnitBtn.addEventListener('click', () => {
+      hidePurchaseUnitModal();
+    });
+  }
+  
+  if (purchaseUnitForm) {
+    purchaseUnitForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await savePurchaseUnitFromModal();
+    });
+  }
+  
+  if (purchaseUnitUnidadSelect) {
+    purchaseUnitUnidadSelect.addEventListener('change', () => {
+      updatePurchaseUnitModalConversions();
     });
   }
   

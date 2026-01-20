@@ -7,7 +7,7 @@
   <title>NRD Productos</title>
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="styles.css?v=1768907919296">
+  <link rel="stylesheet" href="styles.css?v=1768909496475">
   <meta name="theme-color" content="#dc2626">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
@@ -252,8 +252,22 @@
                     + Agregar
                   </button>
                 </div>
-                <div id="purchase-units-list" class="space-y-2">
-                  <!-- Las unidades de compra se agregarán dinámicamente aquí -->
+                <div id="purchase-units-table-container" class="overflow-x-auto">
+                  <table class="w-full border border-gray-200 text-sm">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-600 border-b border-gray-200">Proveedor</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-600 border-b border-gray-200">Unidad</th>
+                        <th class="px-3 py-2 text-center text-xs font-medium text-gray-600 border-b border-gray-200 w-20">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="purchase-units-list">
+                      <!-- Las unidades de compra se mostrarán aquí en filas de tabla -->
+                    </tbody>
+                  </table>
+                  <div id="purchase-units-empty" class="text-center py-4 text-gray-500 text-sm">
+                    No hay unidades de compra agregadas
+                  </div>
                 </div>
               </div>
               
@@ -354,6 +368,59 @@
     </div>
   </div>
 
+  <!-- Purchase Unit Modal -->
+  <div id="purchase-unit-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg max-w-lg w-full border border-gray-200 shadow-lg">
+      <div class="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between">
+        <h3 class="text-lg sm:text-xl font-light tracking-tight">Agregar Unidad de Compra</h3>
+        <button id="close-purchase-unit-modal" class="text-gray-400 hover:text-red-600 text-xl font-light">×</button>
+      </div>
+      <form id="purchase-unit-form" class="p-4 sm:p-6 space-y-4">
+        <div>
+          <label class="block mb-1.5 text-xs uppercase tracking-wider text-gray-600">Proveedor *</label>
+          <select id="purchase-unit-supplier" required
+            class="w-full px-3 py-2 border border-gray-300 focus:outline-none focus:border-red-600 bg-white text-sm rounded">
+            <option value="">Seleccione...</option>
+          </select>
+        </div>
+        <div>
+          <label class="block mb-1.5 text-xs uppercase tracking-wider text-gray-600">Unidad de Medida *</label>
+          <select id="purchase-unit-unidad" required
+            class="w-full px-3 py-2 border border-gray-300 focus:outline-none focus:border-red-600 bg-white text-sm rounded">
+            <option value="">Seleccione...</option>
+            <option value="kg">Kilogramo (kg)</option>
+            <option value="g">Gramo (g)</option>
+            <option value="litro">Litro (L)</option>
+            <option value="ml">Mililitro (mL)</option>
+            <option value="unidad">Unidad</option>
+            <option value="caja">Caja</option>
+            <option value="paquete">Paquete</option>
+            <option value="bolsa">Bolsa</option>
+            <option value="botella">Botella</option>
+            <option value="lata">Lata</option>
+          </select>
+        </div>
+        <div id="purchase-unit-conversions-section" class="hidden">
+          <label class="block mb-2 text-xs uppercase tracking-wider text-gray-600">Conversiones con otras unidades</label>
+          <p class="text-xs text-gray-500 mb-3">Complete los factores de conversión con las otras unidades definidas (ej: 1 kg = 1000 g, factor = 1000)</p>
+          <div id="purchase-unit-conversions-list" class="space-y-2">
+            <!-- Las conversiones se agregarán dinámicamente aquí -->
+          </div>
+        </div>
+        <div class="flex gap-2 pt-4 border-t border-gray-200">
+          <button type="button" id="cancel-purchase-unit-btn"
+            class="flex-1 px-4 py-2 border border-gray-300 hover:border-red-600 hover:text-red-600 transition-colors uppercase tracking-wider text-xs font-light">
+            Cancelar
+          </button>
+          <button type="submit" id="save-purchase-unit-btn"
+            class="flex-1 px-4 py-2 bg-green-600 text-white border border-green-600 hover:bg-green-700 transition-colors uppercase tracking-wider text-xs font-light">
+            Guardar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -384,18 +451,18 @@
   </script>
   
   <!-- App Scripts -->
-  <script src="logger.js?v=1768907919296"></script>
-  <script src="modal.js?v=1768907919296"></script>
-  <script src="auth.js?v=1768907919296"></script>
-  <script src="tabs/products.js?v=1768907919296"></script>
-  <script src="app.js?v=1768907919296"></script>
+  <script src="logger.js?v=1768909496475"></script>
+  <script src="modal.js?v=1768909496475"></script>
+  <script src="auth.js?v=1768909496475"></script>
+  <script src="tabs/products.js?v=1768909496475"></script>
+  <script src="app.js?v=1768909496475"></script>
 
   <script>
 
     // Register service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js?v=1768907919296')
+        navigator.serviceWorker.register('service-worker.js?v=1768909496475')
           .then(reg => {
             logger.info('Service Worker registered');
             reg.addEventListener('updatefound', () => {
