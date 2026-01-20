@@ -7,7 +7,7 @@
   <title>NRD Productos</title>
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="styles.css?v=1768907218475">
+  <link rel="stylesheet" href="styles.css?v=1768907919296">
   <meta name="theme-color" content="#dc2626">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
@@ -261,12 +261,8 @@
               <div>
                 <div class="flex items-center justify-between mb-2">
                   <label class="text-xs text-gray-600">Conversiones entre Unidades</label>
-                  <button type="button" id="add-conversion-btn" 
-                    class="px-2 py-1 text-xs bg-gray-200 text-gray-700 border border-gray-300 rounded hover:bg-gray-300 transition-colors">
-                    + Agregar Conversión
-                  </button>
                 </div>
-                <p class="text-xs text-gray-500 mb-2">Defina factores de conversión entre unidades (ej: 1 kg = 1000 g, factor = 1000)</p>
+                <p class="text-xs text-gray-500 mb-2">Las conversiones se generan automáticamente entre todas las unidades definidas. Complete los factores de conversión (ej: 1 kg = 1000 g, factor = 1000)</p>
                 <div id="conversions-list" class="space-y-2">
                   <!-- Las conversiones se agregarán dinámicamente aquí -->
                 </div>
@@ -388,18 +384,18 @@
   </script>
   
   <!-- App Scripts -->
-  <script src="logger.js?v=1768907218475"></script>
-  <script src="modal.js?v=1768907218475"></script>
-  <script src="auth.js?v=1768907218475"></script>
-  <script src="tabs/products.js?v=1768907218475"></script>
-  <script src="app.js?v=1768907218475"></script>
+  <script src="logger.js?v=1768907919296"></script>
+  <script src="modal.js?v=1768907919296"></script>
+  <script src="auth.js?v=1768907919296"></script>
+  <script src="tabs/products.js?v=1768907919296"></script>
+  <script src="app.js?v=1768907919296"></script>
 
   <script>
 
     // Register service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js?v=1768907218475')
+        navigator.serviceWorker.register('service-worker.js?v=1768907919296')
           .then(reg => {
             logger.info('Service Worker registered');
             reg.addEventListener('updatefound', () => {

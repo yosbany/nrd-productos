@@ -207,12 +207,46 @@ function showProductForm(productId = null) {
           }
         }
         
-        // Load conversions
-        if (product.conversiones && Array.isArray(product.conversiones)) {
-          for (const conversion of product.conversiones) {
-            addConversionRow(conversion);
+        // Load conversions - generate automatically based on units
+        // Wait for all units to be loaded, then generate conversions
+        setTimeout(() => {
+          // Create a map of existing conversions to preserve factors
+          const existingConversionsMap = new Map();
+          if (product.conversiones && Array.isArray(product.conversiones)) {
+            product.conversiones.forEach(conv => {
+              const key = `${conv.fromUnit}_${conv.toUnit}`;
+              existingConversionsMap.set(key, conv.factor);
+            });
           }
-        }
+          
+          // Generate conversions with existing factors preserved
+          updateConversionsFromUnits();
+          
+          // After generation, update factors from existing conversions
+          setTimeout(() => {
+            const conversionsList = document.getElementById('conversions-list');
+            if (conversionsList && existingConversionsMap.size > 0) {
+              const rows = conversionsList.querySelectorAll('[data-conversion-id]');
+              
+              rows.forEach(row => {
+                const fromUnit = row.querySelector('.conversion-from')?.value.trim();
+                const toUnit = row.querySelector('.conversion-to')?.value.trim();
+                const factorInput = row.querySelector('.conversion-factor');
+                
+                if (fromUnit && toUnit && factorInput) {
+                  const key = `${fromUnit}_${toUnit}`;
+                  const existingFactor = existingConversionsMap.get(key);
+                  if (existingFactor !== undefined) {
+                    factorInput.value = parseFloat(existingFactor).toFixed(4);
+                    // Trigger preview update
+                    const event = new Event('input', { bubbles: true });
+                    factorInput.dispatchEvent(event);
+                  }
+                }
+              });
+            }
+          }, 50);
+        }, 200);
         
         // Load variants
         if (variantsList) {
@@ -964,10 +998,23 @@ async function addPurchaseUnitRow(purchaseUnit = null) {
   if (removeBtn) {
     removeBtn.addEventListener('click', () => {
       row.remove();
+      // Regenerate conversions when a purchase unit is removed
+      setTimeout(() => updateConversionsFromUnits(), 10);
+    });
+  }
+  
+  // When purchase unit changes, regenerate conversions
+  const unidadSelect = row.querySelector('.purchase-unit-unidad');
+  if (unidadSelect) {
+    unidadSelect.addEventListener('change', () => {
+      setTimeout(() => updateConversionsFromUnits(), 10);
     });
   }
   
   purchaseUnitsList.appendChild(row);
+  
+  // Regenerate conversions after adding the row
+  setTimeout(() => updateConversionsFromUnits(), 10);
 }
 
 // Collect purchase units
@@ -997,8 +1044,8 @@ function collectPurchaseUnits() {
   return purchaseUnits;
 }
 
-// Add conversion row
-function addConversionRow(conversion = null) {
+// Add conversion row (internal version without triggering update)
+function addConversionRowWithoutUpdate(conversion = null) {
   const conversionsList = document.getElementById('conversions-list');
   if (!conversionsList) return;
   
@@ -1027,7 +1074,7 @@ function addConversionRow(conversion = null) {
         <label class="block text-xs text-gray-600 mb-1">Factor de Conversión</label>
         <input type="number" class="conversion-factor w-full px-2 py-1.5 border border-gray-300 rounded text-sm" 
           step="0.0001" min="0.0001" 
-          value="${conversion ? parseFloat(conversion.factor || 1).toFixed(4) : ''}" 
+          value="${conversion && conversion.factor ? parseFloat(conversion.factor || 1).toFixed(4) : ''}" 
           placeholder="Ej: 1000 (1 kg = 1000 g)" required>
         <div class="text-xs text-gray-500 mt-1 conversion-preview"></div>
       </div>
@@ -1055,8 +1102,26 @@ function addConversionRow(conversion = null) {
     }
   };
   
-  row.querySelector('.conversion-from')?.addEventListener('change', updatePreview);
-  row.querySelector('.conversion-to')?.addEventListener('change', updatePreview);
+  // When units change, regenerate conversions
+  const fromSelect = row.querySelector('.conversion-from');
+  const toSelect = row.querySelector('.conversion-to');
+  
+  if (fromSelect) {
+    fromSelect.addEventListener('change', () => {
+      updatePreview();
+      // Regenerate all conversions when a unit changes
+      updateConversionsFromUnits();
+    });
+  }
+  
+  if (toSelect) {
+    toSelect.addEventListener('change', () => {
+      updatePreview();
+      // Regenerate all conversions when a unit changes
+      updateConversionsFromUnits();
+    });
+  }
+  
   row.querySelector('.conversion-factor')?.addEventListener('input', updatePreview);
   updatePreview();
   
@@ -1064,10 +1129,17 @@ function addConversionRow(conversion = null) {
   if (removeBtn) {
     removeBtn.addEventListener('click', () => {
       row.remove();
+      // Regenerate conversions after removing one
+      updateConversionsFromUnits();
     });
   }
   
   conversionsList.appendChild(row);
+}
+
+// Add conversion row (public API - delegates to internal version)
+function addConversionRow(conversion = null) {
+  addConversionRowWithoutUpdate(conversion);
 }
 
 // Collect conversions
@@ -1107,14 +1179,178 @@ function collectConversions() {
   return conversions;
 }
 
+// Get all unique units from the product form
+function getAllUniqueUnits() {
+  const units = new Set();
+  
+  // Add unidadVenta
+  const unidadVenta = document.getElementById('product-unidad-venta')?.value.trim();
+  if (unidadVenta) units.add(unidadVenta);
+  
+  // Add unidadProduccion
+  const unidadProduccion = document.getElementById('product-unidad-produccion')?.value.trim();
+  if (unidadProduccion) units.add(unidadProduccion);
+  
+  // Add unidadesCompra
+  const purchaseUnitsList = document.getElementById('purchase-units-list');
+  if (purchaseUnitsList) {
+    const purchaseUnitRows = purchaseUnitsList.querySelectorAll('[data-purchase-unit-id]');
+    purchaseUnitRows.forEach(row => {
+      const unidad = row.querySelector('.purchase-unit-unidad')?.value.trim();
+      if (unidad) units.add(unidad);
+    });
+  }
+  
+  return Array.from(units);
+}
+
+// Generate required conversions between all units
+function generateRequiredConversions() {
+  const units = getAllUniqueUnits();
+  
+  // Need at least 2 units to have conversions
+  if (units.length < 2) {
+    return [];
+  }
+  
+  // Generate all possible pairs (A->B for all A != B)
+  const requiredConversions = [];
+  for (let i = 0; i < units.length; i++) {
+    for (let j = 0; j < units.length; j++) {
+      if (i !== j) {
+        requiredConversions.push({
+          fromUnit: units[i],
+          toUnit: units[j]
+        });
+      }
+    }
+  }
+  
+  return requiredConversions;
+}
+
+// Flag to prevent infinite loops during conversion updates
+let isUpdatingConversions = false;
+
+// Update conversions list based on current units
+function updateConversionsFromUnits() {
+  // Prevent infinite loops
+  if (isUpdatingConversions) return;
+  
+  const conversionsList = document.getElementById('conversions-list');
+  if (!conversionsList) return;
+  
+  isUpdatingConversions = true;
+  
+  try {
+    const units = getAllUniqueUnits();
+    
+    // If less than 2 units, clear conversions
+    if (units.length < 2) {
+      conversionsList.innerHTML = '';
+      return;
+    }
+    
+    // Get existing conversions
+    const existingRows = conversionsList.querySelectorAll('[data-conversion-id]');
+    const existingConversions = new Map();
+    
+    existingRows.forEach(row => {
+      const fromUnit = row.querySelector('.conversion-from')?.value.trim();
+      const toUnit = row.querySelector('.conversion-to')?.value.trim();
+      const factor = row.querySelector('.conversion-factor')?.value.trim();
+      
+      if (fromUnit && toUnit && factor) {
+        const key = `${fromUnit}_${toUnit}`;
+        existingConversions.set(key, {
+          fromUnit,
+          toUnit,
+          factor: parseFloat(factor)
+        });
+      }
+    });
+    
+    // Generate required conversions
+    const requiredConversions = generateRequiredConversions();
+    
+    // Check if we need to update (compare required vs existing)
+    const existingKeys = new Set();
+    existingRows.forEach(row => {
+      const fromUnit = row.querySelector('.conversion-from')?.value.trim();
+      const toUnit = row.querySelector('.conversion-to')?.value.trim();
+      if (fromUnit && toUnit) {
+        existingKeys.add(`${fromUnit}_${toUnit}`);
+      }
+    });
+    
+    const requiredKeys = new Set(requiredConversions.map(r => `${r.fromUnit}_${r.toUnit}`));
+    
+    // Only update if there are differences
+    const needsUpdate = requiredKeys.size !== existingKeys.size || 
+      !Array.from(requiredKeys).every(key => existingKeys.has(key));
+    
+    if (!needsUpdate) {
+      return; // No update needed
+    }
+    
+    // Clear current conversions
+    conversionsList.innerHTML = '';
+    
+    // Add conversions (use existing factor if available, otherwise empty)
+    requiredConversions.forEach(required => {
+      const key = `${required.fromUnit}_${required.toUnit}`;
+      const existing = existingConversions.get(key);
+      
+      if (existing) {
+        // Keep existing conversion with its factor
+        addConversionRowWithoutUpdate({
+          fromUnit: existing.fromUnit,
+          toUnit: existing.toUnit,
+          factor: existing.factor
+        });
+      } else {
+        // Add new conversion row (empty factor, user must fill)
+        addConversionRowWithoutUpdate({
+          fromUnit: required.fromUnit,
+          toUnit: required.toUnit,
+          factor: null
+        });
+      }
+    });
+  } finally {
+    isUpdatingConversions = false;
+  }
+}
+
 // Validate conversions
 function validateConversions(conversions) {
-  if (conversions.length === 0) return null;
+  if (conversions.length === 0) {
+    // Check if there are units but no conversions
+    const units = getAllUniqueUnits();
+    if (units.length >= 2) {
+      return 'Debe definir conversiones entre todas las unidades. Hay ' + units.length + ' unidades pero no hay conversiones definidas.';
+    }
+    return null;
+  }
   
   // Check for duplicate conversions
   const keys = conversions.map(c => `${c.fromUnit}_${c.toUnit}`);
   if (new Set(keys).size !== keys.length) {
     return 'No puede haber conversiones duplicadas entre las mismas unidades';
+  }
+  
+  // Check that all required conversions are present
+  const units = getAllUniqueUnits();
+  if (units.length >= 2) {
+    const requiredConversions = generateRequiredConversions();
+    const conversionKeys = new Set(keys);
+    
+    for (const required of requiredConversions) {
+      const key = `${required.fromUnit}_${required.toUnit}`;
+      if (!conversionKeys.has(key)) {
+        return `Falta la conversión de ${required.fromUnit} a ${required.toUnit}`;
+      }
+    }
   }
   
   // Check for circular conversions (A->B and B->A with incompatible factors)
@@ -1186,11 +1422,25 @@ function setupProductFormHandler() {
     });
   }
   
-  // Add conversion button handler
+  // Add conversion button handler (disabled - conversions are auto-generated)
   const addConversionBtn = document.getElementById('add-conversion-btn');
   if (addConversionBtn) {
-    addConversionBtn.addEventListener('click', () => {
-      addConversionRow();
+    addConversionBtn.style.display = 'none'; // Hide button - conversions are auto-generated
+  }
+  
+  // Listen for changes in unidadVenta and unidadProduccion
+  const unidadVentaSelect = document.getElementById('product-unidad-venta');
+  const unidadProduccionSelect = document.getElementById('product-unidad-produccion');
+  
+  if (unidadVentaSelect) {
+    unidadVentaSelect.addEventListener('change', () => {
+      updateConversionsFromUnits();
+    });
+  }
+  
+  if (unidadProduccionSelect) {
+    unidadProduccionSelect.addEventListener('change', () => {
+      updateConversionsFromUnits();
     });
   }
   
