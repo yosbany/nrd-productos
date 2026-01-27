@@ -29,14 +29,21 @@ def update_version():
     
     # Add version parameter to CSS
     html = re.sub(
-        r'(<link[^>]*href=["\'])(styles\.css)(["\'][^>]*>)',
+        r'(<link[^>]*href=["\'])(assets/styles/styles\.css)(["\'][^>]*>)',
         rf'\1\2?v={version}\3',
         html
     )
     
-    # Add version parameter to JS files (except Firebase CDN and external libraries)
+    # Add version parameter to JS files (app.js and service-worker.js)
     html = re.sub(
-        r'(<script[^>]*src=["\'])(logger\.js|modal\.js|auth\.js|tabs/products\.js|app\.js)(["\'][^>]*>)',
+        r'(<script[^>]*src=["\'])(app\.js|service-worker\.js)(["\'][^>]*>)',
+        rf'\1\2?v={version}\3',
+        html
+    )
+    
+    # Add version parameter to nrd-data-access and nrd-common (local development)
+    html = re.sub(
+        r'(<script[^>]*src=["\'])(/nrd-data-access/dist/nrd-data-access\.js|/nrd-common/dist/nrd-common\.js)(["\'][^>]*>)',
         rf'\1\2?v={version}\3',
         html
     )
