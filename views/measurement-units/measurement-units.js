@@ -39,8 +39,12 @@ function loadMeasurementUnits() {
   
   // Check if measurementUnits service is available
   if (!nrd.measurementUnits) {
-    logger.error('MeasurementUnits service not available. The nrd-data-access library may need to be rebuilt.');
-    unitsList.innerHTML = '<div class="text-center py-8 sm:py-12 border border-gray-200 p-4 sm:p-8"><p class="text-gray-600 mb-3 sm:mb-4 text-sm sm:text-base">Error: El servicio de unidades de medida no está disponible. Por favor, reconstruya la librería nrd-data-access.</p></div>';
+    logger.error('MeasurementUnits service not available. The nrd-data-access library may need to be rebuilt.', {
+      nrdKeys: Object.keys(nrd),
+      nrdType: typeof nrd,
+      measurementUnitsType: typeof nrd.measurementUnits
+    });
+    unitsList.innerHTML = '<div class="text-center py-8 sm:py-12 border border-gray-200 p-4 sm:p-8"><p class="text-gray-600 mb-3 sm:mb-4 text-sm sm:text-base">Error: El servicio de unidades de medida no está disponible. Por favor, reconstruya la librería nrd-data-access o recargue la página.</p></div>';
     return;
   }
   
@@ -593,19 +597,40 @@ function populateConversionToUnitSelect(excludeUnitId = null) {
 }
 
 // Initialize measurement units view
+let initializeRetryCount = 0;
+const MAX_INIT_RETRIES = 10;
+
 export function initializeMeasurementUnits() {
   logger.debug('Initializing measurement units view');
   
-  // Check if service is available
+  // Check if service is available with retry mechanism
   const nrd = window.nrd;
   if (!nrd || !nrd.measurementUnits) {
-    logger.error('MeasurementUnits service not available');
+    initializeRetryCount++;
+    
+    if (initializeRetryCount < MAX_INIT_RETRIES) {
+      logger.warn(`MeasurementUnits service not available yet, retrying... (${initializeRetryCount}/${MAX_INIT_RETRIES})`);
+      setTimeout(() => {
+        initializeMeasurementUnits();
+      }, 300);
+      return;
+    }
+    
+    logger.error('MeasurementUnits service not available after retries', {
+      nrdAvailable: !!nrd,
+      nrdKeys: nrd ? Object.keys(nrd) : [],
+      measurementUnitsAvailable: nrd ? !!nrd.measurementUnits : false
+    });
     const unitsList = document.getElementById('measurement-units-list');
     if (unitsList) {
       unitsList.innerHTML = '<div class="text-center py-8 sm:py-12 border border-gray-200 p-4 sm:p-8"><p class="text-red-600 mb-3 sm:mb-4 text-sm sm:text-base">Error: El servicio de unidades de medida no está disponible. Por favor, reconstruya la librería nrd-data-access o use la versión local.</p></div>';
     }
+    initializeRetryCount = 0; // Reset for next attempt
     return;
   }
+  
+  // Reset retry count on success
+  initializeRetryCount = 0;
   
   // Setup event listeners
   setupMeasurementUnitEventListeners();
