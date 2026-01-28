@@ -3151,7 +3151,7 @@ async function importProductsFromCSV() {
     titleEl.textContent = 'Importar Productos';
     messageEl.innerHTML = `
       <div class="space-y-4">
-        <p class="text-sm text-gray-600">Seleccione un archivo CSV con dos columnas: <strong>Artículo</strong> (nombre) y <strong>Contado</strong> (precio)</p>
+        <p class="text-sm text-gray-600">Seleccione un archivo CSV con tres columnas: <strong>Código</strong> (SKU), <strong>Artículo</strong> (nombre) y <strong>Contado</strong> (precio)</p>
         <div>
           <label class="block mb-1.5 text-xs uppercase tracking-wider text-gray-600">Archivo CSV</label>
           <input type="file" id="csv-file-input" accept=".csv" 
@@ -3244,11 +3244,12 @@ async function previewCSVFile(file) {
 
     // Parse CSV (assuming semicolon separator and first line is header)
     const header = lines[0].split(';').map(h => h.trim());
-    const articuloIndex = header.findIndex(h => h.toLowerCase() === 'artículo');
+    const codigoIndex = header.findIndex(h => h.toLowerCase() === 'código' || h.toLowerCase() === 'codigo');
+    const articuloIndex = header.findIndex(h => h.toLowerCase() === 'artículo' || h.toLowerCase() === 'articulo');
     const contadoIndex = header.findIndex(h => h.toLowerCase() === 'contado');
 
-    if (articuloIndex === -1 || contadoIndex === -1) {
-      await showError('El CSV debe tener las columnas "Artículo" y "Contado"');
+    if (codigoIndex === -1 || articuloIndex === -1 || contadoIndex === -1) {
+      await showError('El CSV debe tener las columnas "Código" (SKU), "Artículo" (nombre) y "Contado" (precio)');
       return null;
     }
 
@@ -3266,10 +3267,13 @@ async function previewCSVFile(file) {
         }, {})
       : existingProductsArray || {};
     
-    // Create a map of existing products by name (exact match)
+    // Create a map of existing products by SKU (exact match)
+    // SKU is the key for finding existing products
     const existingProductsMap = {};
     Object.entries(existingProducts).forEach(([id, product]) => {
-      existingProductsMap[product.name] = { id, ...product };
+      if (product.sku) {
+        existingProductsMap[product.sku] = { id, ...product };
+      }
     });
 
     const products = [];
@@ -3281,8 +3285,14 @@ async function previewCSVFile(file) {
       if (!line) continue;
 
       const columns = line.split(';').map(col => col.trim());
+      const sku = columns[codigoIndex];
       const name = columns[articuloIndex];
       const priceStr = columns[contadoIndex];
+
+      if (!sku) {
+        errors.push(`Línea ${i + 1}: Código (SKU) vacío`);
+        continue;
+      }
 
       if (!name) {
         errors.push(`Línea ${i + 1}: Nombre de producto vacío`);
@@ -3291,15 +3301,16 @@ async function previewCSVFile(file) {
 
       const price = parseFloat(priceStr);
       if (isNaN(price) || price < 0) {
-        errors.push(`Línea ${i + 1}: Precio inválido para "${name}"`);
+        errors.push(`Línea ${i + 1}: Precio inválido para "${name}" (SKU: ${sku})`);
         continue;
       }
 
-      const exists = !!existingProductsMap[name];
-      const currentPrice = exists ? parseFloat(existingProductsMap[name].price) : null;
+      const exists = !!existingProductsMap[sku];
+      const currentPrice = exists ? parseFloat(existingProductsMap[sku].price) : null;
       const priceEqual = exists && currentPrice !== null && parseFloat(price) === currentPrice;
       
       products.push({
+        sku,
         name,
         price,
         exists,
@@ -3365,6 +3376,7 @@ async function showCSVPreview(preview) {
           <table class="w-full text-sm">
             <thead class="bg-gray-50 sticky top-0">
               <tr>
+                <th class="px-3 py-2 text-left text-xs uppercase tracking-wider text-gray-600 border-b">Código (SKU)</th>
                 <th class="px-3 py-2 text-left text-xs uppercase tracking-wider text-gray-600 border-b">Nombre</th>
                 <th class="px-3 py-2 text-left text-xs uppercase tracking-wider text-gray-600 border-b">Precio</th>
               </tr>
@@ -3389,11 +3401,22 @@ async function showCSVPreview(preview) {
       
       previewHTML += `
         <tr>
+          <td class="px-3 py-2 font-mono text-xs">${escapeHtml(product.sku)}</td>
           <td class="px-3 py-2">${escapeHtml(product.name)}</td>
           <td class="px-3 py-2 ${priceClass} font-medium">$${parseFloat(product.price).toFixed(2)}</td>
         </tr>
       `;
     });
+    
+    if (preview.products.length > 20) {
+      previewHTML += `
+        <tr>
+          <td colspan="3" class="px-3 py-2 text-center text-xs text-gray-500">
+            ... y ${preview.products.length - 20} productos más
+          </td>
+        </tr>
+      `;
+    }
     
     if (preview.products.length > 20) {
       previewHTML += `
@@ -3471,10 +3494,13 @@ async function processCSVFile(file, preview) {
         }, {})
       : existingProductsArray || {};
     
-    // Create a map of existing products by name (exact match)
+    // Create a map of existing products by SKU (exact match)
+    // SKU is the key for finding existing products
     const existingProductsMap = {};
     Object.entries(existingProducts).forEach(([id, product]) => {
-      existingProductsMap[product.name] = { id, ...product };
+      if (product.sku) {
+        existingProductsMap[product.sku] = { id, ...product };
+      }
     });
 
     let added = 0;
@@ -3485,22 +3511,26 @@ async function processCSVFile(file, preview) {
     for (const product of preview.products) {
       try {
         if (product.exists) {
-          // Update only the price
-          await nrd.products.update(existingProductsMap[product.name].id, {
-            price: product.price
+          // Update existing product (name, price, and mark as vendible)
+          await nrd.products.update(existingProductsMap[product.sku].id, {
+            name: product.name,
+            price: product.price,
+            esVendible: true
           });
           updated++;
         } else {
-          // Create new product
+          // Create new product with SKU and mark as vendible
           await nrd.products.create({
+            sku: product.sku,
             name: product.name,
             price: product.price,
-            active: true
+            active: true,
+            esVendible: true
           });
           added++;
         }
       } catch (error) {
-        errors.push(`Error al procesar "${product.name}": ${error.message}`);
+        errors.push(`Error al procesar "${product.name}" (SKU: ${product.sku}): ${error.message}`);
       }
     }
 
