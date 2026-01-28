@@ -3252,11 +3252,13 @@ async function previewCSVFile(file) {
       return null;
     }
 
-    // Parse CSV (detect separator and first line is header)
+    // Parse CSV (using semicolon separator as specified)
+    const header = lines[0].split(separator).map(h => h.trim());
+    
     // Normalize header to handle encoding issues (remove accents, convert to lowercase)
     const normalizeText = (text) => {
       if (!text) return '';
-      // First normalize to remove accents, then convert to lowercase
+      // Remove accents/diacritics and convert to lowercase
       return text
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '') // Remove diacritics (accents)
@@ -3264,26 +3266,38 @@ async function previewCSVFile(file) {
         .trim();
     };
     
-    const header = lines[0].split(separator).map(h => h.trim());
     const normalizedHeader = header.map(h => normalizeText(h));
     
     // Debug: log header for troubleshooting
-    logger.debug('CSV Header detected', { 
+    console.log('CSV Header detected', { 
       original: header, 
       normalized: normalizedHeader,
-      firstLine: lines[0]
+      firstLine: lines[0],
+      separator: separator
     });
     
-    // Search for columns with flexible matching (handles encoding issues with accents)
-    const codigoIndex = normalizedHeader.findIndex(h => 
-      h === 'codigo' || h === 'cod' || h.startsWith('codig')
+    // Search for columns - try multiple approaches
+    // First try exact match (case insensitive)
+    let codigoIndex = header.findIndex(h => 
+      normalizeText(h) === 'codigo' || normalizeText(h) === 'cod'
     );
-    const articuloIndex = normalizedHeader.findIndex(h => 
-      h === 'articulo' || h === 'art' || h.startsWith('articul')
+    let articuloIndex = header.findIndex(h => 
+      normalizeText(h) === 'articulo' || normalizeText(h) === 'art'
     );
-    const contadoIndex = normalizedHeader.findIndex(h => 
-      h === 'contado' || h === 'precio' || h.startsWith('contad')
+    let contadoIndex = header.findIndex(h => 
+      normalizeText(h) === 'contado' || normalizeText(h) === 'precio'
     );
+    
+    // If not found, try with normalized header
+    if (codigoIndex === -1) {
+      codigoIndex = normalizedHeader.findIndex(h => h === 'codigo' || h === 'cod' || h.startsWith('codig'));
+    }
+    if (articuloIndex === -1) {
+      articuloIndex = normalizedHeader.findIndex(h => h === 'articulo' || h === 'art' || h.startsWith('articul'));
+    }
+    if (contadoIndex === -1) {
+      contadoIndex = normalizedHeader.findIndex(h => h === 'contado' || h === 'precio' || h.startsWith('contad'));
+    }
 
     if (codigoIndex === -1 || articuloIndex === -1 || contadoIndex === -1) {
       const missingColumns = [];
@@ -3293,23 +3307,26 @@ async function previewCSVFile(file) {
       
       // Show detailed error with found columns
       const errorMsg = `El CSV debe tener las columnas: ${missingColumns.join(', ')}.\n\n` +
-        `Columnas encontradas en el archivo:\n${header.map((h, i) => `  ${i + 1}. "${h}" (normalizado: "${normalizedHeader[i]}")`).join('\n')}\n\n` +
-        `Primera línea del CSV: "${lines[0]}"`;
+        `Columnas encontradas en el archivo (${header.length} columnas):\n${header.map((h, i) => `  ${i + 1}. "${h}" (normalizado: "${normalizedHeader[i]}")`).join('\n')}\n\n` +
+        `Primera línea del CSV: "${lines[0]}"\n` +
+        `Separador detectado: "${separator}"`;
       
-      logger.error('CSV columns validation failed', {
+      console.error('CSV columns validation failed', {
         missingColumns,
         foundColumns: header,
         normalizedColumns: normalizedHeader,
         codigoIndex,
         articuloIndex,
-        contadoIndex
+        contadoIndex,
+        separator,
+        firstLine: lines[0]
       });
       
       await showError(errorMsg);
       return null;
     }
     
-    logger.debug('CSV columns validated successfully', {
+    console.log('CSV columns validated successfully', {
       codigoIndex,
       articuloIndex,
       contadoIndex,
