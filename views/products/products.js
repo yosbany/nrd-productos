@@ -3235,24 +3235,44 @@ async function importProductsFromCSV() {
 async function previewCSVFile(file) {
   try {
     const text = await readFileAsText(file);
-    const lines = text.split('\n').filter(line => line.trim());
+    
+    // Remove BOM (Byte Order Mark) if present
+    const textWithoutBOM = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+    
+    // Try to detect separator (semicolon or comma)
+    const firstLine = textWithoutBOM.split('\n')[0];
+    const hasSemicolon = firstLine.includes(';');
+    const hasComma = firstLine.includes(',');
+    const separator = hasSemicolon ? ';' : (hasComma ? ',' : ';'); // Default to semicolon
+    
+    const lines = textWithoutBOM.split('\n').filter(line => line.trim());
     
     if (lines.length === 0) {
       await showError('El archivo CSV está vacío');
       return null;
     }
 
-    // Parse CSV (assuming semicolon separator and first line is header)
+    // Parse CSV (detect separator and first line is header)
     // Normalize header to handle encoding issues (remove accents, convert to lowercase)
     const normalizeText = (text) => {
-      return text.toLowerCase()
+      if (!text) return '';
+      // First normalize to remove accents, then convert to lowercase
+      return text
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+        .replace(/[\u0300-\u036f]/g, '') // Remove diacritics (accents)
+        .toLowerCase()
         .trim();
     };
     
-    const header = lines[0].split(';').map(h => h.trim());
+    const header = lines[0].split(separator).map(h => h.trim());
     const normalizedHeader = header.map(h => normalizeText(h));
+    
+    // Debug: log header for troubleshooting
+    logger.debug('CSV Header detected', { 
+      original: header, 
+      normalized: normalizedHeader,
+      firstLine: lines[0]
+    });
     
     // Search for columns with flexible matching (handles encoding issues with accents)
     const codigoIndex = normalizedHeader.findIndex(h => 
@@ -3271,9 +3291,32 @@ async function previewCSVFile(file) {
       if (articuloIndex === -1) missingColumns.push('Artículo');
       if (contadoIndex === -1) missingColumns.push('Contado');
       
-      await showError(`El CSV debe tener las columnas: ${missingColumns.join(', ')}. Columnas encontradas: ${header.join(', ')}`);
+      // Show detailed error with found columns
+      const errorMsg = `El CSV debe tener las columnas: ${missingColumns.join(', ')}.\n\n` +
+        `Columnas encontradas en el archivo:\n${header.map((h, i) => `  ${i + 1}. "${h}" (normalizado: "${normalizedHeader[i]}")`).join('\n')}\n\n` +
+        `Primera línea del CSV: "${lines[0]}"`;
+      
+      logger.error('CSV columns validation failed', {
+        missingColumns,
+        foundColumns: header,
+        normalizedColumns: normalizedHeader,
+        codigoIndex,
+        articuloIndex,
+        contadoIndex
+      });
+      
+      await showError(errorMsg);
       return null;
     }
+    
+    logger.debug('CSV columns validated successfully', {
+      codigoIndex,
+      articuloIndex,
+      contadoIndex,
+      codigoColumn: header[codigoIndex],
+      articuloColumn: header[articuloIndex],
+      contadoColumn: header[contadoIndex]
+    });
 
     // Get existing products to check which will be updated vs created using NRD Data Access
     const nrd = window.nrd;
@@ -3301,12 +3344,12 @@ async function previewCSVFile(file) {
     const products = [];
     const errors = [];
 
-    // Process each line (skip header)
+      // Process each line (skip header)
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
-      const columns = line.split(';').map(col => col.trim());
+      const columns = line.split(separator).map(col => col.trim());
       const sku = columns[codigoIndex];
       const name = columns[articuloIndex];
       const priceStr = columns[contadoIndex];
