@@ -3276,28 +3276,34 @@ async function previewCSVFile(file) {
       separator: separator
     });
     
-    // Search for columns - try multiple approaches
-    // First try exact match (case insensitive)
-    let codigoIndex = header.findIndex(h => 
-      normalizeText(h) === 'codigo' || normalizeText(h) === 'cod'
-    );
-    let articuloIndex = header.findIndex(h => 
-      normalizeText(h) === 'articulo' || normalizeText(h) === 'art'
-    );
-    let contadoIndex = header.findIndex(h => 
-      normalizeText(h) === 'contado' || normalizeText(h) === 'precio'
-    );
+    // Search for columns - handle encoding issues where accents are lost
+    // Examples: "Cdigo" -> "cdigo", "Artculo" -> "artculo"
+    // We need to match even when letters are missing due to encoding issues
     
-    // If not found, try with normalized header
-    if (codigoIndex === -1) {
-      codigoIndex = normalizedHeader.findIndex(h => h === 'codigo' || h === 'cod' || h.startsWith('codig'));
-    }
-    if (articuloIndex === -1) {
-      articuloIndex = normalizedHeader.findIndex(h => h === 'articulo' || h === 'art' || h.startsWith('articul'));
-    }
-    if (contadoIndex === -1) {
-      contadoIndex = normalizedHeader.findIndex(h => h === 'contado' || h === 'precio' || h.startsWith('contad'));
-    }
+    const findColumnIndex = (normalizedHeader, patterns) => {
+      for (const pattern of patterns) {
+        const index = normalizedHeader.findIndex(h => {
+          // Exact match
+          if (h === pattern) return true;
+          // Starts with pattern
+          if (h.startsWith(pattern)) return true;
+          // Contains pattern (for encoding issues like "cdigo" matching "codigo")
+          if (h.includes(pattern.substring(0, Math.max(2, pattern.length - 1)))) return true;
+          // Match without vowels for encoding issues (e.g., "cdigo" matches "codigo")
+          const hNoVowels = h.replace(/[aeiou]/g, '');
+          const patternNoVowels = pattern.replace(/[aeiou]/g, '');
+          if (hNoVowels === patternNoVowels && hNoVowels.length >= 3) return true;
+          return false;
+        });
+        if (index !== -1) return index;
+      }
+      return -1;
+    };
+    
+    // Try multiple patterns for each column to handle encoding issues
+    const codigoIndex = findColumnIndex(normalizedHeader, ['codigo', 'cod', 'cdigo', 'cdig']);
+    const articuloIndex = findColumnIndex(normalizedHeader, ['articulo', 'art', 'artculo', 'artcul']);
+    const contadoIndex = findColumnIndex(normalizedHeader, ['contado', 'contad', 'precio', 'prec']);
 
     if (codigoIndex === -1 || articuloIndex === -1 || contadoIndex === -1) {
       const missingColumns = [];
