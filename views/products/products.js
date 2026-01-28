@@ -3243,13 +3243,35 @@ async function previewCSVFile(file) {
     }
 
     // Parse CSV (assuming semicolon separator and first line is header)
+    // Normalize header to handle encoding issues (remove accents, convert to lowercase)
+    const normalizeText = (text) => {
+      return text.toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+        .trim();
+    };
+    
     const header = lines[0].split(';').map(h => h.trim());
-    const codigoIndex = header.findIndex(h => h.toLowerCase() === 'código' || h.toLowerCase() === 'codigo');
-    const articuloIndex = header.findIndex(h => h.toLowerCase() === 'artículo' || h.toLowerCase() === 'articulo');
-    const contadoIndex = header.findIndex(h => h.toLowerCase() === 'contado');
+    const normalizedHeader = header.map(h => normalizeText(h));
+    
+    // Search for columns with flexible matching (handles encoding issues with accents)
+    const codigoIndex = normalizedHeader.findIndex(h => 
+      h === 'codigo' || h === 'cod' || h.startsWith('codig')
+    );
+    const articuloIndex = normalizedHeader.findIndex(h => 
+      h === 'articulo' || h === 'art' || h.startsWith('articul')
+    );
+    const contadoIndex = normalizedHeader.findIndex(h => 
+      h === 'contado' || h === 'precio' || h.startsWith('contad')
+    );
 
     if (codigoIndex === -1 || articuloIndex === -1 || contadoIndex === -1) {
-      await showError('El CSV debe tener las columnas "Código" (SKU), "Artículo" (nombre) y "Contado" (precio)');
+      const missingColumns = [];
+      if (codigoIndex === -1) missingColumns.push('Código');
+      if (articuloIndex === -1) missingColumns.push('Artículo');
+      if (contadoIndex === -1) missingColumns.push('Contado');
+      
+      await showError(`El CSV debe tener las columnas: ${missingColumns.join(', ')}. Columnas encontradas: ${header.join(', ')}`);
       return null;
     }
 
