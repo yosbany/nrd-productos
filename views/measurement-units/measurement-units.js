@@ -209,7 +209,7 @@ function showMeasurementUnitForm(unitId = null) {
     
     logger.debug('Saving measurement unit - validated', { id, name, acronym });
     
-    window.showSpinner?.('Guardando unidad de medida...');
+    showSpinner('Guardando unidad de medida...');
     try {
       await saveMeasurementUnit(id || null, { name, acronym });
       // Restore default modal width
@@ -221,7 +221,7 @@ function showMeasurementUnitForm(unitId = null) {
     } catch (error) {
       await window.showError?.(error.message || 'Error al guardar la unidad de medida');
     } finally {
-      window.hideSpinner?.();
+      hideSpinner();
     }
   };
   
