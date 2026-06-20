@@ -29,7 +29,7 @@
     // Ensure a global logger exists early so libraries can reference it safely
     window.logger = window.logger || console;
   </script>
-  <link rel="stylesheet" href="assets/styles/styles.css?v=1781967764315">
+  <link rel="stylesheet" href="assets/styles/styles.css?v=1781979488839">
   <meta name="theme-color" content="#dc2626">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
@@ -552,7 +552,7 @@
       const cacheBuster = '?v=' + Date.now();
       const nrdDataAccessSrc = isLocalhost 
         ? '/nrd-data-access/dist/nrd-data-access.js' + cacheBuster
-        : 'https://datos.nrdonline.site/dist/nrd-data-access.js' + cacheBuster;
+        : 'https://cdn.jsdelivr.net/gh/yosbany/nrd-data-access@main/dist/nrd-data-access.js' + cacheBuster;
       
       console.log('Loading NRD Data Access from:', nrdDataAccessSrc);
       
@@ -578,7 +578,7 @@
       
       const nrdCommonSrc = isLocalhost 
         ? '/nrd-common/dist/nrd-common.js'
-        : 'https://common.nrdonline.site/dist/nrd-common.js';
+        : 'https://cdn.jsdelivr.net/gh/yosbany/nrd-common@main/dist/nrd-common.js';
       
       console.log('Loading NRD Common from:', nrdCommonSrc);
       
@@ -627,14 +627,14 @@
   
   <!-- Main App (load last with defer) -->
   <!-- Note: AuthService and NavigationService are now loaded from NRDCommon CDN -->
-  <script type="module" src="app.js?v=1781967764315" defer></script>
+  <script type="module" src="app.js?v=1781979488839" defer></script>
 
   <script>
 
     // Register service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js?v=1781967764315')
+        navigator.serviceWorker.register('service-worker.js?v=1781979488839')
           .then(reg => {
             logger.info('Service Worker registered');
             reg.addEventListener('updatefound', () => {
